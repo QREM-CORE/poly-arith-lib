@@ -48,7 +48,7 @@ module modular_reduce_tb();
     // ------------------------------------------------------
     // Helper Task: Check Result
     // ------------------------------------------------------
-    task check_result(input string test_name);
+    task automatic check_result(input string test_name);
         logic signed [15:0] exp;
         exp = expected_montgomery(z);
 
