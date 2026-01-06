@@ -24,4 +24,9 @@ package poly_arith_pkg;
     // How many beats to transfer one full polynomial? (256 / 16 = 16 beats)
     parameter int BEATS_PER_POLY  = N / COEFFS_PER_BEAT;
 
+    // =========================================================================
+    // 3. Modular Reduction
+    // =========================================================================
+    parameter int Q_INV_NEG     = 3327;         // -Q^-1 mod R
+
 endpackage : poly_arith_pkg
