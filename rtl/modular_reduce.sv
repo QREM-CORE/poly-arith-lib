@@ -1,5 +1,6 @@
 /*
  * Module Name: modular_reduce
+ * Author: Kiet Le
  * Target Standard: FIPS 203 (ML-KEM / Kyber)
  *
  * Description:

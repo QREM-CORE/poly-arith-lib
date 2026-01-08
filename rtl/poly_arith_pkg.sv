@@ -24,6 +24,8 @@ package poly_arith_pkg;
     // How many beats to transfer one full polynomial? (256 / 16 = 16 beats)
     parameter int BEATS_PER_POLY  = N / COEFFS_PER_BEAT;
 
+    typedef logic signed [15:0] coeff_t; // I/O type for coefficients (NTT and non-NTT values)
+
     // =========================================================================
     // 3. Modular Reduction
     // =========================================================================

@@ -3,7 +3,7 @@
 # =====================
 
 # List of testbenches (example: TESTBENCHES = theta_step_tb rho_step_tb)
-TESTBENCHES = modular_reduce_tb zeta_mul_table_tb
+TESTBENCHES = modular_reduce_tb zeta_mul_table_tb base_case_mul_tb
 
 # RTL design and package files
 PKG_SRCS = rtl/poly_arith_pkg.sv
