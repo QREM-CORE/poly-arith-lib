@@ -5,8 +5,16 @@
 # List of testbenches (example: TESTBENCHES = theta_step_tb rho_step_tb)
 TESTBENCHES = modular_reduce_tb zeta_mul_table_tb base_case_mul_tb
 
-# RTL design and package files
-PKG_SRCS = rtl/poly_arith_pkg.sv
+# --- PATH DEFINITIONS ---
+LIB_DIR     = lib/common_rtl
+# Assuming the submodule has its own 'rtl' folder inside
+LIB_SRCS    = $(wildcard $(LIB_DIR)/rtl/*.sv)
+
+# --- SOURCE FILES ---
+# Packages must be compiled first
+PKG_SRCS    = rtl/poly_arith_pkg.sv
+
+# Your local design files
 DESIGN_SRCS = $(wildcard rtl/*.sv)
 COMMON_SRCS = $(wildcard rtl/*.svh)
 
@@ -17,12 +25,11 @@ WORK = work
 all: $(WORK)
 	@if [ -z "$(strip $(TESTBENCHES))" ]; then \
 		echo "No testbenches specified. Compiling RTL only..."; \
-		vlog -work $(WORK) -sv $(PKG_SRCS); \
-		vlog -work $(WORK) -sv $(filter-out $(PKG_SRCS), $(DESIGN_SRCS)) $(COMMON_SRCS); \
+		vlog -work $(WORK) -sv +incdir+$(LIB_DIR)/rtl $(PKG_SRCS) $(LIB_SRCS); \
+		vlog -work $(WORK) -sv +incdir+$(LIB_DIR)/rtl $(filter-out $(PKG_SRCS), $(DESIGN_SRCS)) $(COMMON_SRCS); \
 	else \
 		$(MAKE) run_all TESTBENCHES="$(TESTBENCHES)"; \
 	fi
-
 
 # Create ModelSim work library
 $(WORK):
@@ -40,8 +47,12 @@ run_all:
 run_%: $(WORK)
 	@if [ "$*" = "all" ]; then exit 0; fi
 	@echo "=== Running $* ==="
-	vlog -work $(WORK) -sv $(PKG_SRCS)
-	vlog -work $(WORK) -sv $(filter-out $(PKG_SRCS), $(DESIGN_SRCS)) $(COMMON_SRCS) tb/$*.sv
+# 1. Compile Packages & Common Lib (Interfaces)
+	vlog -work $(WORK) -sv +incdir+$(LIB_DIR)/rtl $(PKG_SRCS) $(LIB_SRCS)
+# 2. Compile Design & Testbench
+	vlog -work $(WORK) -sv +incdir+$(LIB_DIR)/rtl $(filter-out $(PKG_SRCS), $(DESIGN_SRCS)) $(COMMON_SRCS) tb/$*.sv
+
+# 3. Create Macro & Run
 	@echo 'vcd file "$*.vcd"' > run_$*.macro
 	@echo 'vcd add -r /$*/*' >> run_$*.macro
 	@echo 'run -all' >> run_$*.macro
