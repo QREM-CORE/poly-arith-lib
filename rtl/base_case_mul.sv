@@ -9,6 +9,11 @@
  * This unit performs the pointwise multiplication of two vector elements
  * modulo (X^2 - zeta).
  *
+ * Based on the method described in:
+ * H. Jung, Q. Dang Truong and H. Lee,
+ * "Highly-Efficient Hardware Architecture for ML-KEM PQC Standard,"
+ * in IEEE Open Journal of Circuits and Systems, vol. 6, pp. 356-369, 2025
+ *
  * Mathematical Operation:
  * Given two inputs in the ring R_q[X]/(X^2 - zeta):
  * a(X) = a0 + a1*X
