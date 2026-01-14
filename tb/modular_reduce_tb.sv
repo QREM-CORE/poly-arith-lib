@@ -1,152 +1,193 @@
 // ==========================================================
-// Testbench for Modular Reduce (Montgomery)
+// Testbench for Table-Based Modular Reduction (Pipelined)
 // Author: Kiet Le
-// Target: FIPS 203 (ML-KEM)
+// Target: FIPS 203 (ML-KEM) - Inha Architecture
 // ==========================================================
 `timescale 1ns/1ps
 
-import poly_arith_pkg::*; // Import constants like Q, Q_INV_NEG
+import poly_arith_pkg::*;
 
 module modular_reduce_tb();
 
     // ------------------------------------------------------
     // Signals
     // ------------------------------------------------------
-    logic signed [31:0] z;      // Input (Product)
-    logic signed [15:0] res;    // Output (Reduced)
+    logic           clk;
+    logic           rst;
 
-    // For verification stats
+    // DUT Interface
+    logic           valid_i;
+    logic [23:0]    product_i;
+    logic           valid_o;
+    logic [11:0]    result_o;
+
+    // Verification Stats
     int error_count = 0;
-    int test_count = 0;
+    int sent_count  = 0;
+    int recv_count  = 0;
+
+    // ------------------------------------------------------
+    // Scoreboard (Queue for Pipelined Checking)
+    // ------------------------------------------------------
+    // We push expected values here when valid_i=1
+    // We pop and check when valid_o=1
+    logic [11:0] expected_queue [$];
 
     // ------------------------------------------------------
     // DUT Instantiation
     // ------------------------------------------------------
     modular_reduce dut (
-        .z_i(z),
-        .res_o(res)
+        .clk(clk),
+        .rst(rst),
+        .valid_i(valid_i),
+        .product_i(product_i),
+        .valid_o(valid_o),
+        .result_o(result_o)
     );
 
     // ------------------------------------------------------
-    // Golden Model (Software implementation of the logic)
+    // Clock Generation
     // ------------------------------------------------------
-    function automatic logic signed [15:0] expected_montgomery(input logic signed [31:0] z_val);
-        logic signed [15:0] m_gold;
-        logic signed [31:0] t_gold;
+    initial begin
+        clk = 0;
+        forever #5 clk = ~clk; // 100MHz Clock
+    end
 
-        // 1. Calculate reduction factor
-        m_gold = 16'(z_val * 16'(Q_INV_NEG));
-
-        // 2. Perform reduction (z + m*q) / 2^16
-        // Note: In SW, we divide. In HW, we slice [31:16].
-        // We use >>> 16 to mimic the signed slice behavior perfectly.
-        t_gold = (z_val + (m_gold * 32'(Q))) >>> 16;
-
-        return t_gold[15:0];
+    // ------------------------------------------------------
+    // Golden Model (Standard Modulo)
+    // ------------------------------------------------------
+    function automatic logic [11:0] get_expected(input logic [23:0] val);
+        // The hardware calculates: val % 3329
+        // Note: The hardware output is strictly [0, 3328]
+        return val % 3329;
     endfunction
 
     // ------------------------------------------------------
-    // Helper Task: Check Result
+    // Task: Drive Single Input
     // ------------------------------------------------------
-    task automatic check_result(input string test_name);
-        logic signed [15:0] exp;
-        exp = expected_montgomery(z);
+    task automatic drive_input(input logic [23:0] val);
+        @(posedge clk);
+        valid_i     <= 1'b1;
+        product_i   <= val;
 
-        // Allow for 1ps delta delay for logic to settle
-        #1;
-
-        if (res !== exp) begin
-            $error("[FAIL] %s | Input: %0d | Exp: %0d | Got: %0d",
-                   test_name, z, exp, res);
-            error_count++;
-        end else begin
-            // Uncomment for verbose logging
-            // $display("[PASS] %s | Input: %0d | Result: %0d", test_name, z, res);
-        end
-        test_count++;
+        // Calculate expected result and push to scoreboard
+        expected_queue.push_back(get_expected(val));
+        sent_count++;
     endtask
+
+    // ------------------------------------------------------
+    // Monitor Process (Checks output whenever valid_o is high)
+    // ------------------------------------------------------
+    always @(posedge clk) begin
+        if (valid_o) begin
+            logic [11:0] expected_val;
+
+            if (expected_queue.size() == 0) begin
+                $error("[FAIL] Unexpected output! Queue empty.");
+                error_count++;
+            end else begin
+                expected_val = expected_queue.pop_front();
+
+                if (result_o !== expected_val) begin
+                    $error("[FAIL] Mismatch! Recv: %0d | Exp: %0d", result_o, expected_val);
+                    error_count++;
+                end else begin
+                    recv_count++;
+                end
+            end
+        end
+    end
 
     // ==========================================================
     // Main Test Procedure
     // ==========================================================
     initial begin
+        // Initialize
+        rst = 1;
+        valid_i = 0;
+        product_i = 0;
+
+        // Reset Sequence
+        repeat(5) @(posedge clk);
+        rst = 0; // Release Reset (Active High in your module)
+        repeat(2) @(posedge clk);
+
         $display("==========================================================");
-        $display("Starting Modular Reducer Verification");
+        $display("Starting Modular Reducer Verification (Table-Based)");
         $display("==========================================================");
 
         // -------------------------
-        // Test 1: The Zero Case
+        // Test 1: Zero & Unity
         // -------------------------
-        z = 0;
-        check_result("Zero Input");
+        drive_input(24'd0);
+        drive_input(24'd1);
 
         // -------------------------
-        // Test 2: Max Valid Positive Input
-        // Montgomery Limit: Z < Q * R = 3329 * 65536 = 218,169,344
+        // Test 2: Powers of 2 (LUT Boundaries)
         // -------------------------
-        z = 218169343; // Just below the limit
-        check_result("Max Positive Valid");
+        // Testing specific bits that trigger LUT entries
+        drive_input(24'd4096);      // 2^12 (LUT 15:12)
+        drive_input(24'd65536);     // 2^16 (LUT 19:16)
+        drive_input(24'd1048576);   // 2^20 (LUT 23:20)
 
         // -------------------------
-        // Test 3: Max Valid Negative Input
-        // Montgomery Limit: Z > -Q * R
+        // Test 3: The "Black Swan" Case
         // -------------------------
-        z = -218169343; // Just above the limit
-        check_result("Max Negative Valid");
+        // Input 0x1DDFFF = 1,957,887.
+        // This triggers the Max Sum (13751) -> Requires 4Q Subtraction.
+        // Expected: 1957887 % 3329 = 435.
+        drive_input(24'h1DDFFF);
 
         // -------------------------
-        // Test 4: Typical Poly Multiply Case (Max Coeffs)
-        // 3328 * 3328 (Standard * Standard)
+        // Test 4: Typical Poly Multiply Max
         // -------------------------
-        z = 3328 * 3328;
-        check_result("Max Coeff Product");
+        // 3328 * 3328 = 11,075,584
+        drive_input(24'd11075584);
 
         // -------------------------
-        // Test 5: Negative Coeff Product (CBD Noise)
-        // -2 * 3328
+        // Test 5: Exact Multiples of Q (Result should be 0)
         // -------------------------
-        z = -2 * 3328;
-        check_result("Negative Coeff Product");
+        drive_input(24'd3329);
+        drive_input(24'd6658);
+        drive_input(24'd332900);
 
         // -------------------------
-        // Test 6: One times One
+        // Test 6: Pipeline Stress Test (Randomized)
         // -------------------------
-        z = 1;
-        check_result("Unity Input");
+        $display("Starting Randomized Regression (Real System Constraints)...");
 
-        // -------------------------
-        // Test 7: The "Trap" Case (Input = Q)
-        // Checking if reduction handles inputs that are multiples of Q
-        // -------------------------
-        z = 3329;
-        check_result("Input equals Q");
+        repeat(10000) begin
+            logic [23:0] rand_val;
 
-        z = 3329 * 100;
-        check_result("Input equals 100*Q");
+            // 1. Generate 32-bit random
+            rand_val = $urandom();
 
-        // -------------------------
-        // Test 8: Randomized Regression
-        // -------------------------
-        $display("Starting Randomized Regression (10,000 vectors)...");
-        for (int i = 0; i < 10000; i++) begin
-            // Generate random 32-bit signed integer
-            z = $urandom();
+            // 2. Constrain to the REAL maximum product of ML-KEM.
+            // Max coeff is 3328. Max product is 3328 * 3328 = 11,075,584.
+            // If we exceed this, we force it back into range.
+            if (rand_val > 11075584) begin
+                rand_val = rand_val % 11075584;
+            end
 
-            // Constrain z to valid Montgomery range for this unit (-Q*R to Q*R)
-            // Range is roughly +/- 218 million.
-            // We use modulo to keep it in range for meaningful testing.
-            if (z > 218169000) z = z % 218169000;
-            if (z < -218169000) z = z % 218169000;
-
-            check_result("Random");
+            drive_input(rand_val);
         end
+
+        // End of Input Stream
+        @(posedge clk);
+        valid_i = 0;
+
+        // Wait for pipeline to drain (Queue should empty)
+        wait(expected_queue.size() == 0);
+        repeat(5) @(posedge clk);
 
         // -------------------------
         // Final Report
         // -------------------------
         $display("==========================================================");
         if (error_count == 0) begin
-            $display("ALL TESTS PASSED (%0d Vectors Checked)", test_count);
+            $display("ALL TESTS PASSED");
+            $display("Vectors Sent: %0d", sent_count);
+            $display("Vectors Recv: %0d", recv_count);
         end else begin
             $display("TEST FAILED: %0d Errors Found", error_count);
         end
