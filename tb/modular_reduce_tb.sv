@@ -1,7 +1,7 @@
 // ==========================================================
 // Testbench for Table-Based Modular Reduction (Pipelined)
 // Author: Kiet Le
-// Target: FIPS 203 (ML-KEM) - Inha Architecture
+// Target: FIPS 203 (ML-KEM) - Inha Architecture (Updated 26-bit)
 // ==========================================================
 `timescale 1ns/1ps
 
@@ -17,7 +17,7 @@ module modular_reduce_tb();
 
     // DUT Interface
     logic           valid_i;
-    logic [23:0]    product_i;
+    logic [25:0]    product_i; // UPDATED: 26-bit input
     logic           valid_o;
     logic [11:0]    result_o;
 
@@ -29,8 +29,6 @@ module modular_reduce_tb();
     // ------------------------------------------------------
     // Scoreboard (Queue for Pipelined Checking)
     // ------------------------------------------------------
-    // We push expected values here when valid_i=1
-    // We pop and check when valid_o=1
     logic [11:0] expected_queue [$];
 
     // ------------------------------------------------------
@@ -56,16 +54,16 @@ module modular_reduce_tb();
     // ------------------------------------------------------
     // Golden Model (Standard Modulo)
     // ------------------------------------------------------
-    function automatic logic [11:0] get_expected(input logic [23:0] val);
-        // The hardware calculates: val % 3329
-        // Note: The hardware output is strictly [0, 3328]
+    // UPDATED: Input width 26 bits
+    function automatic logic [11:0] get_expected(input logic [25:0] val);
         return val % 3329;
     endfunction
 
     // ------------------------------------------------------
     // Task: Drive Single Input
     // ------------------------------------------------------
-    task automatic drive_input(input logic [23:0] val);
+    // UPDATED: Input width 26 bits
+    task automatic drive_input(input logic [25:0] val);
         @(posedge clk);
         valid_i     <= 1'b1;
         product_i   <= val;
@@ -76,7 +74,7 @@ module modular_reduce_tb();
     endtask
 
     // ------------------------------------------------------
-    // Monitor Process (Checks output whenever valid_o is high)
+    // Monitor Process
     // ------------------------------------------------------
     always @(posedge clk) begin
         if (valid_o) begin
@@ -109,65 +107,60 @@ module modular_reduce_tb();
 
         // Reset Sequence
         repeat(5) @(posedge clk);
-        rst = 0; // Release Reset (Active High in your module)
+        rst = 0;
         repeat(2) @(posedge clk);
 
         $display("==========================================================");
-        $display("Starting Modular Reducer Verification (Table-Based)");
+        $display("Starting Modular Reducer Verification (26-bit Extended)");
         $display("==========================================================");
 
         // -------------------------
         // Test 1: Zero & Unity
         // -------------------------
-        drive_input(24'd0);
-        drive_input(24'd1);
+        drive_input(26'd0);
+        drive_input(26'd1);
 
         // -------------------------
         // Test 2: Powers of 2 (LUT Boundaries)
         // -------------------------
-        // Testing specific bits that trigger LUT entries
-        drive_input(24'd4096);      // 2^12 (LUT 15:12)
-        drive_input(24'd65536);     // 2^16 (LUT 19:16)
-        drive_input(24'd1048576);   // 2^20 (LUT 23:20)
+        drive_input(26'd4096);      // 2^12 (LUT 15:12)
+        drive_input(26'd65536);     // 2^16 (LUT 19:16)
+        drive_input(26'd1048576);   // 2^20 (LUT 23:20)
+
+        // Testing the Extra Bits (Karatsuba Overflow Range)
+        drive_input(26'd16777216);  // 2^24
+        drive_input(26'd33554432);  // 2^25
 
         // -------------------------
-        // Test 3: The "Black Swan" Case
+        // Test 3: The "Black Swan" Case (Fixed)
         // -------------------------
         // Input 0x1DDFFF = 1,957,887.
-        // This triggers the Max Sum (13751) -> Requires 4Q Subtraction.
-        // Expected: 1957887 % 3329 = 435.
-        drive_input(24'h1DDFFF);
+        drive_input(26'h1DDFFF);
 
         // -------------------------
-        // Test 4: Typical Poly Multiply Max
+        // Test 4: Maximum Karatsuba Sum
         // -------------------------
-        // 3328 * 3328 = 11,075,584
-        drive_input(24'd11075584);
+        // (3328+3328)*(3328+3328) = 6656^2 = 44,302,336
+        drive_input(26'd44302336);
 
         // -------------------------
-        // Test 5: Exact Multiples of Q (Result should be 0)
+        // Test 5: Exact Multiples of Q
         // -------------------------
-        drive_input(24'd3329);
-        drive_input(24'd6658);
-        drive_input(24'd332900);
+        drive_input(26'd3329);
+        drive_input(26'd332900);
+        drive_input(26'd3329000);
 
         // -------------------------
         // Test 6: Pipeline Stress Test (Randomized)
         // -------------------------
-        $display("Starting Randomized Regression (Real System Constraints)...");
+        $display("Starting Randomized Regression (Karatsuba Range)...");
 
         repeat(10000) begin
-            logic [23:0] rand_val;
+            logic [31:0] rand32;
+            logic [25:0] rand_val;
 
-            // 1. Generate 32-bit random
-            rand_val = $urandom();
-
-            // 2. Constrain to the REAL maximum product of ML-KEM.
-            // Max coeff is 3328. Max product is 3328 * 3328 = 11,075,584.
-            // If we exceed this, we force it back into range.
-            if (rand_val > 11075584) begin
-                rand_val = rand_val % 11075584;
-            end
+            rand32 = $urandom();
+            rand_val = rand32[25:0]; // Slice to 26 bits
 
             drive_input(rand_val);
         end
@@ -176,7 +169,7 @@ module modular_reduce_tb();
         @(posedge clk);
         valid_i = 0;
 
-        // Wait for pipeline to drain (Queue should empty)
+        // Wait for pipeline to drain
         wait(expected_queue.size() == 0);
         repeat(5) @(posedge clk);
 

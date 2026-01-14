@@ -1,7 +1,7 @@
 // ==========================================================
-// Testbench for Base Case Multiplier (Algorithm 12)
+// Testbench for Base Case Multiplier (Enhanced Debugging)
 // Author: Kiet Le
-// Target: FIPS 203 (ML-KEM)
+// Target: FIPS 203 (ML-KEM) - 2-Cycle Latency
 // ==========================================================
 `timescale 1ns/1ps
 
@@ -12,6 +12,10 @@ module base_case_mul_tb();
     // ------------------------------------------------------
     // Signals
     // ------------------------------------------------------
+    logic           clk;
+    logic           rst;
+    logic           valid_i;
+
     // Inputs
     coeff_t a0, a1;
     coeff_t b0, b1;
@@ -19,187 +23,237 @@ module base_case_mul_tb();
 
     // Outputs
     coeff_t c0, c1;
+    logic   valid_o;
 
     // Verification Stats
     int error_count = 0;
-    int test_count = 0;
+    int sent_count  = 0;
+    int recv_count  = 0;
+
+    // ------------------------------------------------------
+    // Scoreboard (Queue with Metadata)
+    // ------------------------------------------------------
+    typedef struct {
+        coeff_t c0;
+        coeff_t c1;
+        // Debug info to track which test this expectation belongs to
+        string  test_name;
+        coeff_t orig_a0, orig_a1;
+        coeff_t orig_b0, orig_b1;
+        coeff_t orig_zeta;
+    } expected_t;
+
+    expected_t expected_queue [$];
 
     // ------------------------------------------------------
     // DUT Instantiation
     // ------------------------------------------------------
     base_case_mul dut (
-        .a0(a0), .a1(a1),
-        .b0(b0), .b1(b1),
-        .zeta(zeta),
-        .c0(c0), .c1(c1)
+        .clk(clk),
+        .rst(rst),
+        .valid_i(valid_i),
+        .a0_i(a0), .a1_i(a1),
+        .b0_i(b0), .b1_i(b1),
+        .zeta_i(zeta),
+        .c0_o(c0), .c1_o(c1),
+        .valid_o(valid_o)
     );
 
     // ------------------------------------------------------
-    // Software Golden Model (Algorithm 12)
+    // Clock Generation
     // ------------------------------------------------------
-    function automatic void expected_base_mul(
-        input  coeff_t in_a0, input coeff_t in_a1,
-        input  coeff_t in_b0, input coeff_t in_b1,
-        input  coeff_t in_zeta,
-        output coeff_t exp_c0, output coeff_t exp_c1
+    initial begin
+        clk = 0;
+        forever #5 clk = ~clk; // 100MHz
+    end
+
+    // ------------------------------------------------------
+    // Golden Model (Pure Math)
+    // ------------------------------------------------------
+    function automatic expected_t get_expected(
+        input coeff_t in_a0, input coeff_t in_a1,
+        input coeff_t in_b0, input coeff_t in_b1,
+        input coeff_t in_zeta,
+        input string  name
     );
-        // --- 1. DECLARATIONS ---
-        logic signed [31:0] term_a0b0, term_a1b1;
-        logic signed [31:0] term_a0b1, term_a1b0;
-        logic signed [15:0] mont_a1b1;
-        logic signed [31:0] term_zeta;
-        logic signed [31:0] c0_sum;
-        logic signed [31:0] c1_sum;
+        logic signed [63:0] term_a0b0, term_a1b1, term_a0b1, term_a1b0;
+        logic signed [63:0] c0_full, c1_full;
+        expected_t res;
 
-        // --- 2. LOGIC  ---
+        // Save Debug Metadata
+        res.test_name = name;
+        res.orig_a0 = in_a0; res.orig_a1 = in_a1;
+        res.orig_b0 = in_b0; res.orig_b1 = in_b1;
+        res.orig_zeta = in_zeta;
 
-        // --- Calculate c0: a0*b0 + a1*b1*zeta ---
+        // 1. Compute C0 = (a0*b0 + a1*b1*zeta) % Q
         term_a0b0 = in_a0 * in_b0;
         term_a1b1 = in_a1 * in_b1;
 
-        // Reduce the a1*b1 term first
-        mont_a1b1 = sw_montgomery_reduce(term_a1b1);
+        c0_full = term_a0b0 + (term_a1b1 * in_zeta);
+        res.c0  = c0_full % 3329;
 
-        // Multiply by zeta
-        term_zeta = mont_a1b1 * in_zeta;
-
-        // Add a0*b0 and reduce final result
-        c0_sum = term_a0b0 + term_zeta;
-        exp_c0 = sw_montgomery_reduce(c0_sum);
-
-        // --- Calculate c1: a0*b1 + a1*b0 ---
+        // 2. Compute C1 = (a0*b1 + a1*b0) % Q
         term_a0b1 = in_a0 * in_b1;
         term_a1b0 = in_a1 * in_b0;
 
-        c1_sum = term_a0b1 + term_a1b0;
-        exp_c1 = sw_montgomery_reduce(c1_sum);
+        c1_full = term_a0b1 + term_a1b0;
+        res.c1  = c1_full % 3329;
 
-    endfunction
-
-    // Helper: Software Montgomery Reduction
-    function automatic logic signed [15:0] sw_montgomery_reduce(input logic signed [31:0] z_val);
-        logic signed [15:0] m_gold;
-        logic signed [31:0] t_gold;
-        // m = z * Q_INV_NEG mod 2^16
-        m_gold = 16'(z_val * 16'(Q_INV_NEG));
-        // t = (z + m*q) / 2^16
-        t_gold = (z_val + (m_gold * 32'(Q))) >>> 16;
-        return t_gold[15:0];
+        return res;
     endfunction
 
     // ------------------------------------------------------
-    // Helper Task: Check Result
+    // Driver Task
     // ------------------------------------------------------
-    task automatic check_result(input string test_name);
-        coeff_t exp_c0, exp_c1;
+    task automatic drive_input(
+        input coeff_t in_a0, input coeff_t in_a1,
+        input coeff_t in_b0, input coeff_t in_b1,
+        input coeff_t in_zeta,
+        input string  test_name
+    );
+        expected_t exp;
 
-        // Compute Expected Values
-        expected_base_mul(a0, a1, b0, b1, zeta, exp_c0, exp_c1);
+        // Drive Signals
+        @(posedge clk);
+        valid_i <= 1'b1;
+        a0 <= in_a0; a1 <= in_a1;
+        b0 <= in_b0; b1 <= in_b1;
+        zeta <= in_zeta;
 
-        // Allow time for DUT combinatorial logic
-        #1;
-
-        if (c0 !== exp_c0 || c1 !== exp_c1) begin
-            $error("[FAIL] %s", test_name);
-            $error("  Inputs: a0=%0d, a1=%0d, b0=%0d, b1=%0d, zeta=%0d", a0, a1, b0, b1, zeta);
-            $error("  Exp c0: %0d | Got c0: %0d", exp_c0, c0);
-            $error("  Exp c1: %0d | Got c1: %0d", exp_c1, c1);
-            error_count++;
-        end
-        test_count++;
+        // Calculate Expectation and Push to Queue
+        exp = get_expected(in_a0, in_a1, in_b0, in_b1, in_zeta, test_name);
+        expected_queue.push_back(exp);
+        sent_count++;
     endtask
+
+    // ------------------------------------------------------
+    // Monitor Process (Checks output whenever valid_o is high)
+    // ------------------------------------------------------
+    always @(posedge clk) begin
+        if (valid_o) begin
+            expected_t exp_pop;
+
+            if (expected_queue.size() == 0) begin
+                $error("[FAIL] Unexpected valid_o! Queue is empty.");
+                error_count++;
+            end else begin
+                exp_pop = expected_queue.pop_front();
+
+                if (c0 !== exp_pop.c0 || c1 !== exp_pop.c1) begin
+                    $error("==================================================");
+                    $error("[FAIL] Test Case: %s", exp_pop.test_name);
+                    $error("--------------------------------------------------");
+                    $error("INPUTS: A={%0d, %0d} | B={%0d, %0d} | Zeta=%0d",
+                            exp_pop.orig_a0, exp_pop.orig_a1,
+                            exp_pop.orig_b0, exp_pop.orig_b1,
+                            exp_pop.orig_zeta);
+                    $error("EXPECTED: C0=%0d, C1=%0d", exp_pop.c0, exp_pop.c1);
+                    $error("RECEIVED: C0=%0d, C1=%0d", c0, c1);
+                    $error("==================================================");
+                    error_count++;
+                end else begin
+                    recv_count++;
+                end
+            end
+        end
+    end
 
     // ==========================================================
     // Main Test Procedure
     // ==========================================================
     initial begin
-        $display("==========================================================");
-        $display("Starting Base Case Multiplier Verification");
-        $display("==========================================================");
-
-        // -------------------------
-        // Test 1: The All-Zero Case
-        // -------------------------
+        // Init
+        rst = 1;
+        valid_i = 0;
         a0 = 0; a1 = 0; b0 = 0; b1 = 0; zeta = 0;
-        check_result("All Zeros");
+
+        // Reset Sequence
+        repeat(5) @(posedge clk);
+        rst = 0;
+        repeat(2) @(posedge clk);
+
+        $display("==========================================================");
+        $display("Starting Base Case Multiplier Verification (Explicit Mode)");
+        $display("==========================================================");
 
         // -------------------------
-        // Test 2: Identity Multiplications
-        // (1 + 0X) * (1 + 0X) = 1 + 0X
+        // Test 1: Zeros
         // -------------------------
-        a0 = 1; a1 = 0; b0 = 1; b1 = 0; zeta = 100; // Zeta shouldn't matter here
-        check_result("Identity (1 * 1)");
+        drive_input(0,0,0,0,0, "Test 1: All Zeros");
 
         // -------------------------
-        // Test 3: Simple Linear Term
-        // (0 + 1X) * (0 + 1X) = X^2 = zeta
-        // c0 should be zeta (modulo factors), c1 should be 0
+        // Test 2: Identity
         // -------------------------
-        a0 = 0; a1 = 1; b0 = 0; b1 = 1; zeta = 50;
-        // Note: Due to Montgomery factors (R^-1), exact output isn't just '50',
-        // but the Golden Model will calculate the correct scaled value.
-        check_result("X * X = Zeta");
+        drive_input(1,0,1,0, 100, "Test 2: Identity (1*1)");
 
         // -------------------------
-        // Test 4: Mixed Terms
-        // (1 + 1X) * (1 + 1X) = 1 + 2X + X^2 = (1 + zeta) + 2X
+        // Test 3: Zeta Gen
         // -------------------------
-        a0 = 1; a1 = 1; b0 = 1; b1 = 1; zeta = 20;
-        check_result("Binomial Square (1+X)^2");
+        drive_input(0,1,0,1, 50, "Test 3: X*X = Zeta");
 
         // -------------------------
-        // Test 5: Negative Coefficients (CBD Noise)
-        // Testing with typical small negative numbers
+        // Test 4: Maximum Coefficients (The "Karatsuba Stress Test")
         // -------------------------
-        a0 = -1; a1 = -2; b0 = 2; b1 = 1; zeta = 17;
-        check_result("Small Negative Coeffs");
+        // Inputs = 3328 (Max valid value).
+        // This forces the Middle Term sum to ~44 million, testing the 26-bit expansion.
+        drive_input(3328, 3328, 3328, 3328, 1, "Test 4: Max Coeffs");
 
         // -------------------------
-        // Test 6: Max Positive Values (Corner Case)
-        // a, b = 3328 (approx Q-1)
+        // Test 5: Maximum Zeta
         // -------------------------
-        a0 = 3328; a1 = 3328; b0 = 3328; b1 = 3328; zeta = 17;
-        check_result("Max Positive Inputs");
+        // This stresses the C0 calculation: (a1*b1*zeta)
+        // We want to make sure the multiplication by a large Zeta doesn't overflow or glitch.
+        drive_input(100, 3328, 100, 3328, 3328, "Test 5: Max Zeta");
 
         // -------------------------
-        // Test 7: Max Negative Values (Corner Case)
+        // Test 6: The "Cross-Term" Stress
         // -------------------------
-        a0 = -1664; a1 = -1664; b0 = -1664; b1 = -1664; zeta = 17;
-        check_result("Max Negative Inputs");
+        // We want to generate a huge C1 result (a0*b1 + a1*b0)
+        // Set a0=Max, b1=Max, a1=Max, b0=Max.
+        // This specifically targets the logic: P_sum - P_high - P_low
+        drive_input(3328, 3328, 3328, 3328, 10, "Test 6: Cross Term Stress");
 
         // -------------------------
-        // Test 8: Large Zeta (Max Field Element)
+        // Test 7: The "Wrap Around" (Modulo Boundary)
         // -------------------------
-        a0 = 10; a1 = 10; b0 = 10; b1 = 10; zeta = 3328;
-        check_result("Large Zeta");
+        // Inputs that are exactly Q-1. The result usually wraps close to 0 or Q.
+        drive_input(3328, 1, 1, 3328, 17, "Test 7: Boundary Wrap");
 
         // -------------------------
-        // Test 9: Randomized Regression
+        // Test 8: Pipeline Stress (Random)
         // -------------------------
-        $display("Starting Randomized Regression (10,000 vectors)...");
-        for (int i = 0; i < 10000; i++) begin
-            // Randomize inputs within 12-bit signed range mostly,
-            // but full 16-bit range is valid too.
-            a0 = $urandom_range(0, 3328);
-            // Occasionally flip sign to test negative inputs
-            if ($urandom() % 2) a0 = -a0;
+        $display("Stress Testing Pipeline...");
 
-            a1 = $urandom_range(0, 3328); if ($urandom() % 2) a1 = -a1;
-            b0 = $urandom_range(0, 3328); if ($urandom() % 2) b0 = -b0;
-            b1 = $urandom_range(0, 3328); if ($urandom() % 2) b1 = -b1;
+        for (int i=0; i < 10000; i++) begin
+            string test_id;
+            // Create a unique name for this iteration: "Random #0", "Random #1", etc.
+            $sformat(test_id, "Random #%0d", i);
 
-            // Zeta is strictly positive 0..3328 in our ROM, but stored in signed container
-            zeta = $urandom_range(0, 3328);
-
-            check_result("Random Vector");
+            drive_input(
+                $urandom_range(0, 3328), $urandom_range(0, 3328),
+                $urandom_range(0, 3328), $urandom_range(0, 3328),
+                $urandom_range(0, 3328),
+                test_id
+            );
         end
+
+        // Stop Driving
+        @(posedge clk);
+        valid_i = 0;
+
+        // Wait for Pipeline to Drain (Queue empty)
+        wait(expected_queue.size() == 0);
+        repeat(5) @(posedge clk);
 
         // -------------------------
         // Final Report
         // -------------------------
         $display("==========================================================");
         if (error_count == 0) begin
-            $display("ALL TESTS PASSED (%0d Vectors Checked)", test_count);
+            $display("ALL TESTS PASSED");
+            $display("Vectors Sent: %0d", sent_count);
+            $display("Vectors Recv: %0d", recv_count);
         end else begin
             $display("TEST FAILED: %0d Errors Found", error_count);
         end
