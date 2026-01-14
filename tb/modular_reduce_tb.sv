@@ -126,8 +126,8 @@ module modular_reduce_tb();
         drive_input(26'd4096);      // 2^12 (LUT 15:12)
         drive_input(26'd65536);     // 2^16 (LUT 19:16)
         drive_input(26'd1048576);   // 2^20 (LUT 23:20)
-        
-        // NEW: Testing the Extra Bits (Karatsuba Overflow Range)
+
+        // Testing the Extra Bits (Karatsuba Overflow Range)
         drive_input(26'd16777216);  // 2^24
         drive_input(26'd33554432);  // 2^25
 
@@ -162,11 +162,6 @@ module modular_reduce_tb();
             rand32 = $urandom();
             rand_val = rand32[25:0]; // Slice to 26 bits
 
-            // UPDATED CONSTRAINT:
-            // We now support up to ~45 million (Karatsuba max).
-            // We can actually just test the full 26-bit range (67 million)
-            // since the hardware is fully defined for [25:0].
-            
             drive_input(rand_val);
         end
 

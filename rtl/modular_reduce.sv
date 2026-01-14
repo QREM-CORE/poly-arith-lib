@@ -23,7 +23,7 @@
  *
  * Architecture: 2-Stage Fixed-Latency Pipeline
  * - Stage 1 (Cycle 0): Parallel LUT lookup and summation.
- * - Stage 2 (Cycle 1): Final correction using parallel subtraction to ensure strict 
+ * - Stage 2 (Cycle 1): Final correction using parallel subtraction to ensure strict
  * output range [0, 3328]. Checks up to 5Q to handle the expanded input range.
  *
  */
