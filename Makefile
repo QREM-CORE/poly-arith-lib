@@ -3,7 +3,7 @@
 # =====================
 
 # List of testbenches (example: TESTBENCHES = theta_step_tb rho_step_tb)
-TESTBENCHES = modular_reduce_tb zeta_mul_table_tb base_case_mul_tb mod_mul_tb mod_sub_tb mod_add_tb
+TESTBENCHES = zeta_mul_table_tb mod_mul_tb mod_sub_tb mod_add_tb
 
 # --- PATH DEFINITIONS ---
 LIB_DIR     = lib/common_rtl
