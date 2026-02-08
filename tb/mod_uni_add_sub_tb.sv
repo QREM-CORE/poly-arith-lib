@@ -1,14 +1,14 @@
 // ==========================================================
-// Testbench for Table-Based Modular Multiplier
+// Testbench for Modular Unified Adder/Subtractor
 // Author: Kiet Le
 // Target: FIPS 203 (ML-KEM) - 12-bit Modular Arithmetic
-// Verified Latency: 3 Clock Cycles
+// Verified Latency: 2 Clock Cycles
 // ==========================================================
 `timescale 1ns/1ps
 
 import poly_arith_pkg::*;
 
-module mod_mul_tb();
+module mod_uni_add_sub_tb();
 
     // ------------------------------------------------------
     // Signals
@@ -19,6 +19,7 @@ module mod_mul_tb();
     // Inputs
     coeff_t         op1;
     coeff_t         op2;
+    logic           is_sub; // 0 = Add, 1 = Sub
     logic           valid_i;
 
     // Outputs
@@ -34,17 +35,17 @@ module mod_mul_tb();
     // Scoreboard (Queue for Pipelined Checking)
     // ------------------------------------------------------
     // Stores expected results to compare against valid_o
-    // The queue depth naturally handles the 3-cycle latency
     coeff_t expected_queue [$];
 
     // ------------------------------------------------------
     // DUT Instantiation
     // ------------------------------------------------------
-    mod_mul dut (
+    mod_uni_add_sub dut (
         .clk(clk),
         .rst(rst),
         .op1_i(op1),
         .op2_i(op2),
+        .is_sub_i(is_sub),
         .valid_i(valid_i),
         .result_o(result_o),
         .valid_o(valid_o)
@@ -55,30 +56,38 @@ module mod_mul_tb();
     // ------------------------------------------------------
     initial begin
         clk = 0;
-        forever #5 clk = ~clk; // 100MHz Clock (10ns period)
+        forever #5 clk = ~clk; // 100MHz Clock
     end
 
     // ------------------------------------------------------
     // Golden Model (Pure Math)
     // ------------------------------------------------------
-    // Calculates (A * B) % 3329 using safe 64-bit arithmetic
-    function automatic coeff_t get_expected(input coeff_t a, input coeff_t b);
-        longint product;
-        product = longint'(a) * longint'(b); // Force 64-bit calc
-        return coeff_t'(product % 3329);
+    // Calculates (A +/- B) % 3329 safely
+    function automatic coeff_t get_expected(input coeff_t a, input coeff_t b, input logic sub);
+        longint res;
+        if (sub) begin
+            // Subtraction: Ensure positive result by adding Q before modulo
+            // (a - b) mod Q
+            res = (longint'(a) + 3329 - longint'(b)) % 3329;
+        end else begin
+            // Addition: (a + b) mod Q
+            res = (longint'(a) + longint'(b)) % 3329;
+        end
+        return coeff_t'(res);
     endfunction
 
     // ------------------------------------------------------
     // Task: Drive Inputs
     // ------------------------------------------------------
-    task automatic drive_input(input coeff_t a, input coeff_t b, input string name);
+    task automatic drive_input(input coeff_t a, input coeff_t b, input logic sub, input string name);
         @(posedge clk);
         valid_i <= 1'b1;
         op1     <= a;
         op2     <= b;
+        is_sub  <= sub;
 
         // Push expected result to queue
-        expected_queue.push_back(get_expected(a, b));
+        expected_queue.push_back(get_expected(a, b, sub));
         sent_count++;
     endtask
 
@@ -86,7 +95,6 @@ module mod_mul_tb();
     // Monitor Process
     // ------------------------------------------------------
     always @(posedge clk) begin
-        // Checks valid_o; works for any pipeline depth (now 3)
         if (valid_o) begin
             coeff_t expected_val;
 
@@ -119,6 +127,7 @@ module mod_mul_tb();
         valid_i = 0;
         op1 = 0;
         op2 = 0;
+        is_sub = 0;
 
         // Reset Sequence
         repeat(5) @(posedge clk);
@@ -126,43 +135,57 @@ module mod_mul_tb();
         repeat(2) @(posedge clk);
 
         $display("==========================================================");
-        $display("Starting Modular Multiplier Verification (3-Cycle Latency)");
+        $display("Starting Modular Adder/Subtractor Verification");
         $display("==========================================================");
 
         // --------------------------------------------------
-        // 1. Corner Cases
+        // 1. ADDITION Corner Cases
         // --------------------------------------------------
-        // Zero
-        drive_input(0, 0,    "Zero * Zero");
-        drive_input(0, 1234, "Zero * Rand");
+        // Standard
+        drive_input(0, 0,       0, "Add: Zero + Zero");
+        drive_input(100, 200,   0, "Add: Standard");
 
-        // Identity
-        drive_input(1, 1,    "One * One");
-        drive_input(1, 3328, "One * Max");
-
-        // Max Values (The Overflow Stress Test)
-        // 3328 = -1 mod 3329. So (-1)*(-1) should be 1.
-        drive_input(3328, 3328, "Max * Max");
+        // Overflow / Reduction Check
+        // 3328 + 1 = 3329 -> 0
+        drive_input(3328, 1,    0, "Add: Boundary (result 0)");
+        // 3328 + 3328 = 6656 -> 3327
+        drive_input(3328, 3328, 0, "Add: Max + Max");
 
         // --------------------------------------------------
-        // 2. Random Stress Testing
+        // 2. SUBTRACTION Corner Cases
+        // --------------------------------------------------
+        // Standard
+        drive_input(500, 200,   1, "Sub: Standard");
+        drive_input(500, 500,   1, "Sub: Result Zero");
+
+        // Underflow / Wrap Check
+        // 0 - 1 = -1 -> 3328
+        drive_input(0, 1,       1, "Sub: Underflow 1");
+        // 10 - 20 = -10 -> 3319
+        drive_input(10, 20,     1, "Sub: Underflow Standard");
+
+        // --------------------------------------------------
+        // 3. Random Stress Testing
         // --------------------------------------------------
         $display("Starting Random Stress Loop (500 vectors)...");
 
         for (int i = 0; i < 500; i++) begin
             coeff_t rand_a, rand_b;
-            rand_a = $urandom_range(0, 3328);
-            rand_b = $urandom_range(0, 3328);
+            logic   rand_sub;
 
-            drive_input(rand_a, rand_b, "Random");
+            rand_a   = $urandom_range(0, 3328);
+            rand_b   = $urandom_range(0, 3328);
+            rand_sub = $urandom_range(0, 1); // Randomly pick Add or Sub
+
+            drive_input(rand_a, rand_b, rand_sub, "Random");
         end
 
         // Stop Driving
         @(posedge clk);
         valid_i = 0;
-        op1 = 0; op2 = 0;
+        op1 = 0; op2 = 0; is_sub = 0;
 
-        // Wait for Pipeline to Drain (3 cycles + safety)
+        // Wait for Pipeline to Drain
         wait(expected_queue.size() == 0);
         repeat(5) @(posedge clk);
 
