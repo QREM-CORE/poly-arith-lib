@@ -164,7 +164,7 @@ module mod_uni_add_sub_tb();
         for (int i = 0; i < 500; i++) begin
             coeff_t rand_a, rand_b;
             logic   rand_sub;
-            
+
             rand_a   = $urandom_range(0, 3328);
             rand_b   = $urandom_range(0, 3328);
             rand_sub = $urandom_range(0, 1);
