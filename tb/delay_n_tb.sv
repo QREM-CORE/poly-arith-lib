@@ -83,7 +83,7 @@ module delay_n_tb;
         $display("==================================================");
         if (error_count == 0)
             $display("ALL TESTS PASSED");
-        else 
+        else
             $display("FAILED: %0d Errors Found", error_count);
         $display("==================================================");
         $finish;

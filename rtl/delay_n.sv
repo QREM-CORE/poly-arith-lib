@@ -6,7 +6,7 @@
  * - DWIDTH: Bit width of the signal (default 12 for coefficients)
  * - DEPTH: Number of clock cycles to delay (default 3)
  */
- 
+
 module delay_n #(
     parameter int DWIDTH = 12,
     parameter int DEPTH = 3
