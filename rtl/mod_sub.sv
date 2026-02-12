@@ -1,79 +1,48 @@
 /*
-* Module Name: mod_sub
-* Author(s): Jessica Buentipo (Modified for Subtraction)
-* Target: FIPS 203 (ML-KEM / Kyber)
-*
-* Description:
-* Performs Modular Subtraction: (A - B) mod 3329.
-* Implements a single-stage conditional addition reduction. If the result
-* of (A - B) is negative (indicated by the MSB of the 13-bit difference),
-* the modulus Q (3329) is added to bring the result back into the
-* positive range [0, 3328].
-*
-* Latency: 2 Clock Cycles
-* - Cycle 0: Input Registration (Pipeline Stage 1)
-* - Cycle 1: Combinational Subtraction, Modular Correction, and Output
-* Registration (Pipeline Stage 2)
-*/
+ * Module Name: mod_sub
+ * Author(s): Jessica Buentipo, Kiet Le
+ * Target: FIPS 203 (ML-KEM / Kyber)
+ *
+ * Description:
+ * Performs Combinational Modular Subtraction: (A - B) mod 3329.
+ *
+ * Latency: 0 Clock Cycles (Combinational)
+ */
 
 import poly_arith_pkg::*;
 
 module mod_sub(
-    input   logic   clk,
-    input   logic   rst,
-
     // Inputs: Two 12-bit coefficients (0 to 3328)
     input   coeff_t op1_i,
     input   coeff_t op2_i,
-    input   logic   valid_i,
 
     // Output: 12-bit result (0 to 3328)
-    output  coeff_t result_o,
-    output  logic   valid_o
+    output  coeff_t result_o
 );
 
-    coeff_t         op1_reg, op2_reg;
-    logic           valid_reg1;
+    // Using 13 bits to capture the sign/underflow of the subtraction
+    logic [12:0] diff;
+    logic [12:0] diff_plus_q;
 
-    // using 13 bits to capture the sign bit of the subtraction
-    logic [12:0]    diff;
-    logic [12:0]    diff_plus_q;
-    coeff_t         final_result_wire;
+    always_comb begin
+        // 1. Raw Subtraction
+        // If op1 < op2, this will underflow (wrap around in 13-bit unsigned arithmetic).
+        // The MSB (bit 12) effectively acts as the sign bit in 2's complement view,
+        // or indicates a borrow in unsigned view.
+        diff = op1_i - op2_i;
 
-    // =========================================================================
-    // CYCLE 0: Input Registers (Pipeline Stage 1)
-    // =========================================================================
+        // 2. Prepare Corrected Value
+        // If the result was negative (underflow), we add Q to bring it back to [0, Q-1].
+        // We explicitly cast Q to 13 bits to match the width.
+        diff_plus_q = diff + 13'(Q);
 
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            op1_reg    <= '0;
-            op2_reg    <= '0;
-            valid_reg1 <= 1'b0;
+        // 3. Output Selection
+        // If bit 12 is 1, it means the result was negative (underflow occurred).
+        // Therefore, we select the corrected value (diff + Q).
+        if (diff[12]) begin
+            result_o = diff_plus_q[11:0];
         end else begin
-            op1_reg    <= op1_i;
-            op2_reg    <= op2_i;
-            valid_reg1 <= valid_i;
-        end
-    end
-
-    // combinational addition logic
-    assign diff = op1_reg - op2_reg;
-    assign diff_plus_q = diff + Q;
-
-    // selection of output
-    assign final_result_wire = diff[12] ? diff_plus_q[11:0] : diff[11:0];
-
-    // =========================================================================
-    // CYCLE 1 Logic: Output Registers (Pipeline Stage 2)
-    // =========================================================================
-
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            result_o    <= '0;
-            valid_o     <= 1'b0;
-        end else begin
-            result_o    <= final_result_wire;
-            valid_o     <= valid_reg1;
+            result_o = diff[11:0];
         end
     end
 
