@@ -24,7 +24,7 @@ module mod_add_tb();
     // ------------------------------------------------------
     int pass_count = 0;
     int fail_count = 0;
-    
+
     // Struct to hold expected values for checking
     typedef struct {
         coeff_t a;
@@ -62,13 +62,13 @@ module mod_add_tb();
 
             // Golden Model Logic
             local_sum = a + b;
-            
+
             // Prepare transaction
             trans.a = a;
             trans.b = b;
             // Modulo reduction: If sum >= 3329, subtract 3329
             trans.expected = (local_sum >= Q) ? (local_sum - Q) : local_sum[11:0];
-            
+
             expected_q.push_back(trans);
         end
     endtask

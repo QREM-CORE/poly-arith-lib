@@ -63,7 +63,7 @@ module mod_sub_tb();
             // Golden Model Logic for Subtraction
             // (A - B) mod 3329
             diff = $signed({1'b0, a}) - $signed({1'b0, b});
-            
+
             if (diff < 0) begin
                 // Handle negative wrap (underflow)
                 expected_val = coeff_t'(diff + Q);
@@ -75,7 +75,7 @@ module mod_sub_tb();
             trans.a = a;
             trans.b = b;
             trans.expected = expected_val;
-            
+
             expected_q.push_back(trans);
         end
     endtask
