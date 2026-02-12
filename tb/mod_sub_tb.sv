@@ -1,7 +1,7 @@
 // ==========================================================
-// Testbench for Base Case Multiplier (Enhanced Debugging)
-// Author: Jessica Buentipo
-// Target: FIPS 203 (ML-KEM) - 2-Cycle Latency
+// Testbench for Modular Subtractor (Combinational)
+// Author: Jessica Buentipo, Kiet Le
+// Target: FIPS 203 (ML-KEM) - 0-Cycle Latency
 // ==========================================================
 
 `timescale 1ns/1ps
@@ -9,104 +9,133 @@
 module mod_sub_tb();
 
     import poly_arith_pkg::*;
-    logic        clk;
-    logic        rst;
-    coeff_t      op1_i;
-    coeff_t      op2_i;
-    logic        valid_i;
 
-    coeff_t      result_o;
-    logic        valid_o;
+    // ------------------------------------------------------
+    // Signals
+    // ------------------------------------------------------
+    logic          clk;
+    coeff_t        op1_i;
+    coeff_t        op2_i;
+    coeff_t        result_o;
 
-    // Queue to hold expected results for latency matching
-    coeff_t expected_q[$];
+    // ------------------------------------------------------
+    // Verification Stats
+    // ------------------------------------------------------
     int pass_count = 0;
     int fail_count = 0;
 
+    // Struct to hold expected values
+    typedef struct {
+        coeff_t a;
+        coeff_t b;
+        coeff_t expected;
+    } transaction_t;
+
+    transaction_t expected_q[$];
+
+    // ------------------------------------------------------
     // Clock Generation
+    // ------------------------------------------------------
     initial clk = 0;
-    always #5 clk = ~clk;
+    always #5 clk = ~clk; // 100MHz
 
-    // Instantiate UUT (Unit Under Test)
-    mod_sub uut (.*);
+    // ------------------------------------------------------
+    // Instantiate DUT (Combinational)
+    // ------------------------------------------------------
+    mod_sub dut (
+        .op1_i    (op1_i),
+        .op2_i    (op2_i),
+        .result_o (result_o)
+    );
 
-    // Task to send stimulus and calculate expected result
+    // ------------------------------------------------------
+    // Task: Drive Inputs & Queue Expectation
+    // ------------------------------------------------------
     task send_sub(input [11:0] a, input [11:0] b);
-        // Using signed integer to calculate the expected golden value
         int signed diff;
         coeff_t expected_val;
+        transaction_t trans;
         begin
             @(posedge clk);
-            op1_i   <= a;
-            op2_i   <= b;
-            valid_i <= 1'b1;
+            op1_i <= a;
+            op2_i <= b;
 
             // Golden Model Logic for Subtraction
+            // (A - B) mod 3329
             diff = $signed({1'b0, a}) - $signed({1'b0, b});
+
             if (diff < 0) begin
+                // Handle negative wrap (underflow)
                 expected_val = coeff_t'(diff + Q);
             end else begin
                 expected_val = coeff_t'(diff);
             end
 
-            expected_q.push_back(expected_val); // Store for later checking
+            // Prepare Transaction
+            trans.a = a;
+            trans.b = b;
+            trans.expected = expected_val;
 
-            @(posedge clk);
-            valid_i <= 1'b0;
+            expected_q.push_back(trans);
         end
     endtask
 
-    // Checker Logic: Runs every time valid_o is asserted
-    always @(posedge clk) begin
-        if (valid_o) begin
-            coeff_t expected;
-            if (expected_q.size() > 0) begin
-                expected = expected_q.pop_front();
-                if (result_o === expected) begin
-                    $display("[PASS] Time:%0t | Expected:%d Got:%d", $time, expected, result_o);
-                    pass_count++;
-                end else begin
-                    $display("[FAIL] Time:%0t | Expected:%d Got:%d", $time, expected, result_o);
-                    fail_count++;
-                end
+    // ------------------------------------------------------
+    // Monitor / Checker (At Negedge)
+    // ------------------------------------------------------
+    // Checks result immediately (0-cycle latency)
+    always @(negedge clk) begin
+        if (expected_q.size() > 0) begin
+            transaction_t trans;
+            trans = expected_q.pop_front();
+
+            if (result_o === trans.expected) begin
+                pass_count++;
             end else begin
-                $display("[ERROR] Time:%0t | valid_o asserted but no expected data in queue!", $time);
+                $display("[FAIL] Time:%0t | Input: %d - %d", $time, trans.a, trans.b);
+                $display("       Expected:%d | Got:%d", trans.expected, result_o);
                 fail_count++;
             end
         end
     end
 
+    // ------------------------------------------------------
     // Main Stimulus
+    // ------------------------------------------------------
     initial begin
-        // Initialize Signals
-        rst = 1;
+        // Initialize
         op1_i = 0;
         op2_i = 0;
-        valid_i = 0;
 
-        repeat (2) @(posedge clk);
-        rst = 0;
-        repeat (2) @(posedge clk);
+        $display("==================================================");
+        $display("Starting Modular Subtractor Verification (Combinational)");
+        $display("==================================================");
+
+        // Wait for startup
+        repeat (5) @(posedge clk);
 
         // --- Test Cases ---
-        $display("--- Starting Subtraction Tests ---");
-
         send_sub(12'd50, 12'd20);      // Simple positive result: 30
-        send_sub(12'd20, 12'd50);      // Underflow: 20 - 50 = -30 -> (-30 + 3329) = 3299
+        send_sub(12'd20, 12'd50);      // Underflow: 20 - 50 = -30 -> 3299
         send_sub(12'd0, 12'd1);        // Smallest underflow: -1 -> 3328
         send_sub(12'd3328, 12'd0);     // Max positive: 3328
         send_sub(12'd100, 12'd100);    // Zero case
         send_sub(12'd0, 12'd3328);     // Max underflow: -3328 -> 1
         send_sub(12'd1664, 12'd1665);  // Mid-range underflow
 
-        // Random testing (optional)
-        repeat(5) begin
-            send_sub($urandom_range(0, Q-1), $urandom_range(0, Q-1));
+        // Random testing
+        repeat(50) begin
+            coeff_t r1, r2;
+            r1 = $urandom_range(0, 3328);
+            r2 = $urandom_range(0, 3328);
+            send_sub(r1, r2);
         end
 
-        // Wait for pipeline to drain (2 stages in your module)
-        repeat (5) @(posedge clk);
+        // Wait for checker queue to empty
+        wait(expected_q.size() == 0);
+        repeat (2) @(posedge clk);
 
+        // --- Final Report ---
         $display("\n--- FINAL REPORT ---");
         $display("Tests Passed: %0d", pass_count);
         $display("Tests Failed: %0d", fail_count);
