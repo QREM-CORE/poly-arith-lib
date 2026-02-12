@@ -32,55 +32,55 @@ module pe0 (
     // Logic Instantiations
     // =========================================================================
     // ============= Input Registers =============
-    logic   coeff_t a0, b0, w0;
+    coeff_t a0, b0, w0;
     logic   [3:0]   ctrl;
 
     // ============= Delay Register Wires =============
     // -------- Delay 4 Valid Propagation Register --------
-    logic   coeff_t delay_4_valid_data_i;
-    logic   coeff_t delay_4_valid_data_o;
+    coeff_t delay_4_valid_data_i;
+    coeff_t delay_4_valid_data_o;
 
     // -------- Delay 1 W0 Input Register Logic --------
-    logic   coeff_t delay_1_w0_data_i;
-    logic   coeff_t delay_1_w0_data_o;
+    coeff_t delay_1_w0_data_i;
+    coeff_t delay_1_w0_data_o;
 
     // -------- Delay 3 Register --------
-    logic   coeff_t delay_3_data_i;
-    logic   coeff_t delay_3_data_o;
+    coeff_t delay_3_data_i;
+    coeff_t delay_3_data_o;
 
     // -------- Delay 1 Addition Output Register --------
-    logic   coeff_t delay_1_add_data_i;
-    logic   coeff_t delay_1_add_data_o;
+    coeff_t delay_1_add_data_i;
+    coeff_t delay_1_add_data_o;
 
     // -------- Delay 1 Subtraction Output Register --------
-    logic   coeff_t delay_1_sub_data_i;
-    logic   coeff_t delay_1_sub_data_o;
+    coeff_t delay_1_sub_data_i;
+    coeff_t delay_1_sub_data_o;
 
     // ============= Arithmetic Module Wires =============
     // -------- Modular Adder Logic --------
     // Inputs
-    logic   coeff_t mod_add_op1_i;
-    logic   coeff_t mod_add_op2_i;
+    coeff_t mod_add_op1_i;
+    coeff_t mod_add_op2_i;
     // Outputs
-    logic   coeff_t mod_add_result_o;
+    coeff_t mod_add_result_o;
 
     // -------- Modular Subtractor Logic --------
     // Inputs
-    logic   coeff_t mod_sub_op1_i;
-    logic   coeff_t mod_sub_op2_i;
+    coeff_t mod_sub_op1_i;
+    coeff_t mod_sub_op2_i;
     // Outputs
-    logic   coeff_t mod_sub_result_o;
+    coeff_t mod_sub_result_o;
 
     // -------- Modular Multiplier Logic --------
     // Inputs
-    logic   coeff_t mod_mul_op1_i;
-    logic   coeff_t mod_mul_op2_i;
+    coeff_t mod_mul_op1_i;
+    coeff_t mod_mul_op2_i;
     // Outputs
-    logic   coeff_t mod_mul_result_o;
+    coeff_t mod_mul_result_o;
 
     // -------- Modular Divider2 Logic --------
-    logic   coeff_t mod_div_by_2_op_i;
-    logic   coeff_t mod_div_by_2_op_o;
+    coeff_t mod_div_by_2_op_i;
+    coeff_t mod_div_by_2_op_o;
 
     // =========================================================================
     // Input Registration
@@ -108,7 +108,7 @@ module pe0 (
     delay_n #(
         .DWIDTH (1),
         .DEPTH  (4)
-    ) u_delay_1_w0 (
+    ) u_delay_4_valid (
         .clk(clk),
         .rst(rst),
 
@@ -134,7 +134,7 @@ module pe0 (
     delay_n #(
         .DWIDTH (COEFF_WIDTH), // 12-bit
         .DEPTH  (3)
-    ) u_delay_1_w0 (
+    ) u_delay_3 (
         .clk(clk),
         .rst(rst),
 
@@ -147,27 +147,27 @@ module pe0 (
     delay_n #(
         .DWIDTH (COEFF_WIDTH), // 12-bit
         .DEPTH  (1)
-    ) u_delay_1_w0 (
+    ) u_delay_1_add (
         .clk(clk),
         .rst(rst),
 
         .data_i(delay_1_add_data_i),
         .data_o(delay_1_add_data_o)
     );
-    assign delay_1_add_data_o = 
+    assign delay_1_add_data_o = mod_div_by_2_op_i;
 
     // -------- Delay 1 Subtraction Output Register --------
     delay_n #(
         .DWIDTH (COEFF_WIDTH), // 12-bit
         .DEPTH  (1)
-    ) u_delay_1_w0 (
+    ) u_delay_1_sub (
         .clk(clk),
         .rst(rst),
 
         .data_i(delay_1_sub_data_i),
         .data_o(delay_1_sub_data_o)
     );
-    assign delay_1_sub_data_i = 
+    assign delay_1_sub_data_i = mod_sub_result_o;
 
     // =========================================================================
     // Arithmetic Module Instantiations
@@ -180,8 +180,8 @@ module pe0 (
 
         .result_o   (mod_add_result_o)
     );
-    assign mod_add_op1_i    = 
-    assign mod_add_op2_i    =
+    assign mod_add_op1_i    = ctrl[0] ? a0 : delay_3_data_o;
+    assign mod_add_op2_i    = ctrl[0] ? b0 : mod_mul_result_o;
 
     // -------- Modular Subtractor Instantiation --------
     mod_add u_mod_sub (
@@ -190,8 +190,8 @@ module pe0 (
 
         .result_o   (mod_sub_result_o)
     );
-    assign mod_sub_op1_i    =
-    assign mod_sub_op2_i    =
+    assign mod_sub_op1_i    = ctrl[0] ? a0 : delay_3_data_o;
+    assign mod_sub_op2_i    = ctrl[0] ? b0 : mod_mul_result_o;
 
     // -------- Modular Divider2 Instantiation --------
     mod_mul u_mod_mul (
@@ -209,10 +209,16 @@ module pe0 (
     // -------- Modular Divider2 Instantiation --------
     mod_div_by_2 u_mod_div_by_2 (
         .op_i       (mod_div_by_2_op_i),
-        .op_o       (mod_div_by_2_op_o),
+        .op_o       (mod_div_by_2_op_o)
     );
-    assign mod_div_by_2_op_i =
-    assign mod_div_by_2_op_o =
+    assign mod_div_by_2_op_i = delay_1_add_data_o;
 
+    // =========================================================================
+    // PE Outputs
+    // =========================================================================
+
+    assign u0_o     = ctrl[2] ? delay_3_data_o : delay_1_add_data_o;
+    assign v0_o     = ctrl[2] ? mod_mul_result_o : delay_1_sub_data_o;
+    assign valid_o  = delay_4_valid_data_o;
 
 endmodule
