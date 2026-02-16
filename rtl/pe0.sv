@@ -37,8 +37,8 @@ module pe0 (
 
     // ============= Delay Register Wires =============
     // -------- Delay 4 Valid Propagation Register --------
-    coeff_t delay_4_valid_data_i;
-    coeff_t delay_4_valid_data_o;
+    logic   delay_4_valid_data_i;
+    logic   delay_4_valid_data_o;
 
     // -------- Delay 1 W0 Input Register Logic --------
     coeff_t delay_1_w0_data_i;
@@ -107,7 +107,7 @@ module pe0 (
     // -------- Delay 4 Valid Propagation Register --------
     delay_n #(
         .DWIDTH (1),
-        .DEPTH  (4)
+        .DEPTH  (5)
     ) u_delay_4_valid (
         .clk(clk),
         .rst(rst),
@@ -154,7 +154,7 @@ module pe0 (
         .data_i(delay_1_add_data_i),
         .data_o(delay_1_add_data_o)
     );
-    assign delay_1_add_data_o = mod_div_by_2_op_i;
+    assign delay_1_add_data_i = mod_add_result_o;
 
     // -------- Delay 1 Subtraction Output Register --------
     delay_n #(
@@ -184,7 +184,7 @@ module pe0 (
     assign mod_add_op2_i    = ctrl[0] ? b0 : mod_mul_result_o;
 
     // -------- Modular Subtractor Instantiation --------
-    mod_add u_mod_sub (
+    mod_sub u_mod_sub (
         .op1_i      (mod_sub_op1_i),
         .op2_i      (mod_sub_op2_i),
 
@@ -197,11 +197,13 @@ module pe0 (
     mod_mul u_mod_mul (
         .clk        (clk),
         .rst        (rst),
+        .valid_i    (),
 
         .op1_i      (mod_mul_op1_i),
         .op2_i      (mod_mul_op2_i),
 
-        .result_o   (mod_mul_result_o)
+        .result_o   (mod_mul_result_o),
+        .valid_o     ()
     );
     assign mod_mul_op1_i    = ctrl_i[0] ? delay_1_w0_data_o : w0;
     assign mod_mul_op2_i    = ctrl_i[0] ? delay_1_sub_data_o : b0;
