@@ -19,7 +19,7 @@ module pe0 (
     input   coeff_t         b0_i,
     input   coeff_t         w0_i,
     // Control Inputs (From the AU Controller)
-    input   logic   [3:0]   ctrl_i,
+    input   pe_mode_e       ctrl_i,
     input   logic           valid_i,
 
     // Data Outputs
@@ -31,14 +31,19 @@ module pe0 (
     // =========================================================================
     // Logic Instantiations
     // =========================================================================
-    // ============= Input Registers =============
-    coeff_t a0, b0, w0;
-    logic   [3:0]   ctrl;
 
     // ============= Delay Register Wires =============
     // -------- Delay 4 Valid Propagation Register --------
     logic   delay_4_valid_data_i;
     logic   delay_4_valid_data_o;
+
+    // -------- Delay 3 Valid Propagation Register --------
+    logic   delay_3_valid_data_i;
+    logic   delay_3_valid_data_o;
+
+    // -------- Delay 1 Valid Propagation Register --------
+    logic   delay_1_valid_data_i;
+    logic   delay_1_valid_data_o;
 
     // -------- Delay 1 W0 Input Register Logic --------
     coeff_t delay_1_w0_data_i;
@@ -83,31 +88,14 @@ module pe0 (
     coeff_t mod_div_by_2_op_o;
 
     // =========================================================================
-    // Input Registration
-    // =========================================================================
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            a0      <= '0;
-            b0      <= '0;
-            w0      <= '0;
-            ctrl    <= '0;
-        end else begin
-            if (valid_i) begin
-                a0      <= a0_i;
-                b0      <= b0_i;
-                w0      <= w0_i;
-                ctrl    <= ctrl_i;
-            end
-        end
-    end
-
-    // =========================================================================
     // Delay Register Instantiations
     // =========================================================================
+
     // -------- Delay 4 Valid Propagation Register --------
+    // For NTT, INTT, and CWM Modes (4-cycle latency)
     delay_n #(
         .DWIDTH (1),
-        .DEPTH  (5)
+        .DEPTH  (4)
     ) u_delay_4_valid (
         .clk(clk),
         .rst(rst),
@@ -115,7 +103,38 @@ module pe0 (
         .data_i(delay_4_valid_data_i),
         .data_o(delay_4_valid_data_o)
     );
-    assign delay_4_valid_data_i = valid_i;
+    // Gate input: Only enter pipe during 4-cycle modes
+    assign delay_4_valid_data_i = (ctrl_i == PE_MODE_NTT || ctrl_i == PE_MODE_INTT || ctrl_i == PE_MODE_CWM) ? valid_i : 1'b0;
+
+    // -------- Delay 3 Valid Propagation Register --------
+    // For Co/Deco Modes (3-cycle latency)
+    delay_n #(
+        .DWIDTH (1),
+        .DEPTH  (3)
+    ) u_delay_3_valid (
+        .clk(clk),
+        .rst(rst),
+
+        .data_i(delay_3_valid_data_i),
+        .data_o(delay_3_valid_data_o)
+    );
+    // Gate input: Only enter pipe during 3-cycle modes
+    assign delay_3_valid_data_i = (ctrl_i == PE_MODE_CODECO1 || ctrl_i == PE_MODE_CODECO2) ? valid_i : 1'b0;
+
+    // -------- Delay 1 Valid Propagation Register --------
+    // For ADD/SUB Modes (1-cycle latency)
+    delay_n #(
+        .DWIDTH (1),
+        .DEPTH  (1)
+    ) u_delay_1_valid (
+        .clk(clk),
+        .rst(rst),
+
+        .data_i(delay_1_valid_data_i),
+        .data_o(delay_1_valid_data_o)
+    );
+    // Gate input: Only enter pipe during 1-cycle modes
+    assign delay_1_valid_data_i = (ctrl_i == PE_MODE_ADDSUB) ? valid_i : 1'b0;
 
     // -------- W0 Input Delay 1 Register --------
     delay_n #(
@@ -128,7 +147,7 @@ module pe0 (
         .data_i(delay_1_w0_data_i),
         .data_o(delay_1_w0_data_o)
     );
-    assign delay_1_w0_data_i    = w0;
+    assign delay_1_w0_data_i    = w0_i;
 
     // -------- Delay 3 Register --------
     delay_n #(
@@ -141,7 +160,7 @@ module pe0 (
         .data_i(delay_3_data_i),
         .data_o(delay_3_data_o)
     );
-    assign delay_3_data_i = ctrl_i[0] ? mod_div_by_2_op_o : a0;
+    assign delay_3_data_i = ctrl_i[0] ? mod_div_by_2_op_o : a0_i;
 
     // -------- Delay 1 Addition Output Register --------
     delay_n #(
@@ -180,8 +199,8 @@ module pe0 (
 
         .result_o   (mod_add_result_o)
     );
-    assign mod_add_op1_i    = ctrl[0] ? a0 : delay_3_data_o;
-    assign mod_add_op2_i    = ctrl[0] ? b0 : mod_mul_result_o;
+    assign mod_add_op1_i    = ctrl_i[0] ? a0_i : delay_3_data_o;
+    assign mod_add_op2_i    = ctrl_i[0] ? b0_i : mod_mul_result_o;
 
     // -------- Modular Subtractor Instantiation --------
     mod_sub u_mod_sub (
@@ -190,8 +209,8 @@ module pe0 (
 
         .result_o   (mod_sub_result_o)
     );
-    assign mod_sub_op1_i    = ctrl[0] ? a0 : delay_3_data_o;
-    assign mod_sub_op2_i    = ctrl[0] ? b0 : mod_mul_result_o;
+    assign mod_sub_op1_i    = ctrl_i[0] ? a0_i : delay_3_data_o;
+    assign mod_sub_op2_i    = ctrl_i[0] ? b0_i : mod_mul_result_o;
 
     // -------- Modular Divider2 Instantiation --------
     mod_mul u_mod_mul (
@@ -205,8 +224,8 @@ module pe0 (
         .result_o   (mod_mul_result_o),
         .valid_o     ()
     );
-    assign mod_mul_op1_i    = ctrl_i[0] ? delay_1_w0_data_o : w0;
-    assign mod_mul_op2_i    = ctrl_i[0] ? delay_1_sub_data_o : b0;
+    assign mod_mul_op1_i    = ctrl_i[0] ? delay_1_w0_data_o : w0_i;
+    assign mod_mul_op2_i    = ctrl_i[0] ? delay_1_sub_data_o : b0_i;
 
     // -------- Modular Divider2 Instantiation --------
     mod_div_by_2 u_mod_div_by_2 (
@@ -219,8 +238,20 @@ module pe0 (
     // PE Outputs
     // =========================================================================
 
-    assign u0_o     = ctrl[2] ? delay_3_data_o : delay_1_add_data_o;
-    assign v0_o     = ctrl[2] ? mod_mul_result_o : delay_1_sub_data_o;
-    assign valid_o  = delay_4_valid_data_o;
+    assign u0_o     = ctrl_i[2] ? delay_3_data_o : delay_1_add_data_o;
+    assign v0_o     = ctrl_i[2] ? mod_mul_result_o : delay_1_sub_data_o;
+
+    always_comb begin
+        if (ctrl_i == PE_MODE_ADDSUB) begin
+            // ADD/SUB Mode: 1-Cycle Latency
+            valid_o = delay_1_valid_data_o;
+        end else if (ctrl_i == PE_MODE_CODECO1 || ctrl_i == PE_MODE_CODECO2) begin
+            // Co/Deco Mode: 3-Cycle Latency (Bypasses Adder)
+            valid_o = delay_3_valid_data_o;
+        end else begin
+            // NTT, INTT, CWM Modes: 4-Cycle Latency
+            valid_o = delay_4_valid_data_o;
+        end
+    end
 
 endmodule
