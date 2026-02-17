@@ -23,13 +23,13 @@
  * Notable Architectural Differences from PE0:
  * 1. Twiddle Factor Injection: PE3 includes an additional input port (`tf_omega_4_i`)
  * to accept the specific complex root of unity required for the Mixed-Radix NTT.
- * 2. Dual-Stage Operand Routing: The multiplier's operand 1 path utilizes a two-stage 
+ * 2. Dual-Stage Operand Routing: The multiplier's operand 1 path utilizes a two-stage
  * multiplexing scheme:
- * - Stage 1 ("The Diagram Mux" via ctrl_i[1]): Selects between the standard 
+ * - Stage 1 ("The Diagram Mux" via ctrl_i[1]): Selects between the standard
  * base weight (`w3_i`) and the twiddle factor (`tf_omega_4_i`).
- * - Stage 2 ("The Timing Mux" via ctrl_i[0]): Dynamically selects between the 
- * immediate Cycle 0 value (for NTT) and a 1-cycle delayed value (for INTT) 
- * to ensure precise data alignment with the delayed subtractor output. This 
+ * - Stage 2 ("The Timing Mux" via ctrl_i[0]): Dynamically selects between the
+ * immediate Cycle 0 value (for NTT) and a 1-cycle delayed value (for INTT)
+ * to ensure precise data alignment with the delayed subtractor output. This
  * creates a "Smart PE" that hides INTT pipeline slip from the top-level controller.
  *
  * Important Usage Note:
