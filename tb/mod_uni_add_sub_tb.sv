@@ -118,7 +118,6 @@ module mod_uni_add_sub_tb();
                 $display("  Expected: %0d", trans.expected);
                 $display("  Received: %0d", result_o);
                 $display("==================================================\n");
-
                 $error("Test Failed");
                 error_count++;
             end else begin

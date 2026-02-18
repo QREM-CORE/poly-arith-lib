@@ -27,12 +27,7 @@ package poly_arith_pkg;
     typedef logic [11:0] coeff_t; // I/O type for coefficients (NTT and non-NTT values)
 
     // =========================================================================
-    // 3. Modular Reduction
-    // =========================================================================
-    parameter int Q_INV_NEG     = 3327;         // -Q^-1 mod R
-
-    // =========================================================================
-    // 4. Zeta Pre-computed Values
+    // 3. Zeta Pre-computed Values
     // =========================================================================
 
     // Algorithm 9/10: Forward/Inverse NTT Zeta Constants
@@ -78,5 +73,21 @@ package poly_arith_pkg;
         12'd1722, 12'd1607, 12'd1212, 12'd2117, 12'd1874, 12'd1455, 12'd1029, 12'd2300,
         12'd2110, 12'd1219, 12'd2935, 12'd394,  12'd885,  12'd2444, 12'd2154, 12'd1175
     };
+
+    // =========================================================================
+    // 4. PE Constants
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // Processing Element (PE) Operating Modes
+    // -------------------------------------------------------------------------
+    typedef enum logic [3:0] {
+        PE_MODE_CWM     = 4'b1000, // Coordinate-Wise Multiplication
+        PE_MODE_NTT     = 4'b1010, // Number Theoretic Transform
+        PE_MODE_INTT    = 4'b1111, // Inverse Number Theoretic Transform
+        PE_MODE_ADDSUB  = 4'b0011, // Modular Addition / Subtraction
+        PE_MODE_CODECO1 = 4'b1100, // Compression / Decompression (Variant 1)
+        PE_MODE_CODECO2 = 4'b0100  // Compression / Decompression (Variant 2)
+    } pe_mode_e;
 
 endpackage : poly_arith_pkg
