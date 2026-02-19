@@ -28,6 +28,7 @@ module pe0 (
     // Data Outputs
     output  coeff_t         u2_o,
     output  coeff_t         v2_o,
+    output  coeff_t         m_o,
     output  logic           valid_o
 );
 
@@ -209,6 +210,7 @@ module pe0 (
 
     assign u2_o = ctrl_i[1] ? u2_mux_i : mod_mul_1_result_o;
     assign v2_o = ctrl_i[1] ? v2_mux_i : mod_mul_2_result_o;
+    assign m_o = delay_1_add_data_i;
 
     // COME BACK TO VALID PROPAGATION LOGIC
 endmodule
