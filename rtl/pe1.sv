@@ -1,5 +1,5 @@
 /*
- * Module Name: pe0 (Processing Element 0)
+ * Module Name: pe1 (Processing Element 1)
  * Author(s): Jessica Buentipo
  * Target: FIPS 203 (ML-KEM / Kyber) Hardware Accelerator
  *
@@ -8,32 +8,6 @@
  * H. Jung, Q. D. Truong and H. Lee, "Highly-Efficient Hardware Architecture
  * for ML-KEM PQC Standard," in IEEE Open Journal of Circuits and Systems, 2025,
  * doi: 10.1109/OJCAS.2025.3591136. (Inha University)
- *
- * Description:
- * This module implements a highly optimized, multi-mode Mixed-Radix Butterfly
- * Processing Element. It is a core component of the Arithmetic Unit (AU) used for
- * polynomial arithmetic in ML-KEM.
- *
- * To minimize area, the module utilizes a "folded" (re-entrant) pipeline architecture.
- * Depending on the operating mode, the internal multiplexers dynamically reorder the
- * data flow between the modular adder/subtractor and the modular multiplier. Parallel
- * delay shift-registers (delay_n) ensure that data arrives at the execution units
- * fully aligned, regardless of the routing path.
- *
- * Important Usage Note:
- * The `ctrl_i` mode select signal is combinational to all internal MUXes. The Top-Level
- * AU Controller MUST hold `ctrl_i` steady for the entire duration of an operation and
- * insert a pipeline flush (wait for `valid_o` to clear) before switching to a new mode
- * to prevent structural hazards (Ghost Pulses).
- *
- * Supported Modes & Latency:
- * | Mode (ctrl_i)    | Operation                  | U Out         | V Out         | Latency |
- * |------------------|----------------------------|---------------|---------------|---------|
- * | PE_MODE_NTT      | Number Theoretic Transform | A + B*W       | A - B*W       | 4 CCs   |
- * | PE_MODE_INTT     | Inverse NTT                | (A + B)/2     | (A - B)*W     | 4 CCs   |
- * | PE_MODE_CWM      | Coordinate-Wise Mult       | A + B*W       | A - B*W       | 4 CCs   |
- * | PE_MODE_CODECO   | Compression / Decomp       | A             | B*W           | 3 CCs   |
- * | PE_MODE_ADDSUB   | Point-wise Add/Sub         | A + B         | A - B         | 1 CC    |
  */
 
 import poly_arith_pkg::*;
