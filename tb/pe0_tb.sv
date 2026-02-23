@@ -310,7 +310,10 @@ module pe0_tb();
         $display("----------------------------------------------------------");
 
         if (error_count == 0) $display("RESULT: SUCCESS");
-        else $display("RESULT: FAILURE");
+        else begin
+            $display("RESULT: FAILURE");
+            $fatal(1, "pe0_tb: Testbench failed.");
+        end
         $display("==========================================================");
         $finish;
     end

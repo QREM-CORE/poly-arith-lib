@@ -61,6 +61,7 @@ module zeta_mul_table_tb;
             $display("SUCCESS: All 128 Zeta Constants match FIPS 203 exactly.");
         end else begin
             $display("FAILURE: Found %0d mismatches.", errors);
+            $fatal(1, "zeta_mul_table_tb: Testbench failed.");
         end
         $finish;
     end

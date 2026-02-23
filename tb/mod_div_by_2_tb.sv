@@ -160,6 +160,7 @@ module mod_div_by_2_tb();
             $display("Vectors Processed: %0d", recv_count);
         end else begin
             $display("TEST FAILED: %0d Errors Found", error_count);
+            $fatal(1, "mod_div_by_2_tb: Testbench failed.");
         end
         $display("==========================================================");
         $finish;

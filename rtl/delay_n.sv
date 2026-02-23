@@ -23,11 +23,13 @@ module delay_n #(
         if (rst) begin
             shift_reg <= '0;
         end else begin
-            // Shift logic:
-            // Input goes into index 0.
-            // Old data shifts "up" the array.
-            // Output comes from the top (DEPTH-1).
-            shift_reg <= {shift_reg[DEPTH-2:0], data_i};
+            // Input always goes to index 0
+            shift_reg[0] <= data_i;
+
+            // Shift older data up (automatically skipped if DEPTH == 1)
+            for (int i = 1; i < DEPTH; i++) begin
+                shift_reg[i] <= shift_reg[i-1];
+            end
         end
     end
 

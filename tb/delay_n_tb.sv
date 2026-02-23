@@ -63,17 +63,19 @@ module delay_n_tb;
         repeat(DEPTH) expected_queue.push_back(0);
 
         repeat(2) @(posedge clk);
+        #1; // Drop reset slightly after the clock edge
         rst = 0;
         $display("[INFO] Reset released.");
 
         // 2. Drive Random Data
         repeat(20) begin
             @(posedge clk);
-            // Push the *current* value which the DUT samples this edge
+            // Push the *current* value exactly on the clock edge
             expected_queue.push_back(data_i);
 
-            // Drive the *new* value for the next edge
-            data_i <= $urandom_range(0, 4095);
+            #1; // Wait a tiny bit before changing inputs
+            // Drive the *new* value for the next edge (blocking '=' is fine here)
+            data_i = $urandom_range(0, 4095);
         end
 
         // 3. Wait for pipeline to drain
@@ -83,8 +85,10 @@ module delay_n_tb;
         $display("==================================================");
         if (error_count == 0)
             $display("ALL TESTS PASSED");
-        else
+        else begin
             $display("FAILED: %0d Errors Found", error_count);
+            $fatal(1, "delay_n_tb: Testbench failed.");
+        end
         $display("==================================================");
         $finish;
     end

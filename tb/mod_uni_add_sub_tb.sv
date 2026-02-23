@@ -185,6 +185,7 @@ module mod_uni_add_sub_tb();
             $display("Vectors Processed: %0d", recv_count);
         end else begin
             $display("TEST FAILED: %0d Errors Found", error_count);
+            $fatal(1, "mod_uni_add_sub_tb: Testbench failed.");
         end
         $display("==========================================================");
         $finish;

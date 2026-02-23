@@ -133,8 +133,10 @@ module mod_add_tb();
 
         if (fail_count == 0 && pass_count > 0)
             $display("SIMULATION RESULT: SUCCESS\n");
-        else
+        else begin
             $display("SIMULATION RESULT: FAILURE\n");
+            $fatal(1, "mod_add_tb: Testbench failed.");
+        end
 
         $finish;
     end
