@@ -8,6 +8,40 @@
  * H. Jung, Q. D. Truong and H. Lee, "Highly-Efficient Hardware Architecture
  * for ML-KEM PQC Standard," in IEEE Open Journal of Circuits and Systems, 2025,
  * doi: 10.1109/OJCAS.2025.3591136. (Inha University)
+ *
+ * Description:
+ * This module implements a highly optimized, multi-mode Processing Element configured
+ * specifically for operations requiring dual modular multiplications, such as the
+ * Coordinate-Wise Multiplication (Basecase Multiplication) over the polynomial ring.
+ * It is a core component of the Arithmetic Unit (AU) used for ML-KEM.
+ *
+ * Notable Architectural Differences from PE0/PE3:
+ * 1. Dual Multipliers & Weights: Incorporates two modular multipliers (`mod_mul_1`,
+ * `mod_mul_2`) and two separate weight/twiddle factor inputs (`w1_i`, `w2_i`) to
+ * process parallel multiplications simultaneously.
+ * 2. Cross-Term Output (`m_o`): Features a dedicated third data output (`m_o`) and
+ * an associated valid flag (`valid_m_o`). In CWM mode, this outputs the addition
+ * of the two parallel products (e.g., A*W1 + B*W2), which is necessary for
+ * resolving the X^2 - zeta modulo reduction in the basecase polynomial multiplication.
+ * 3. No Modular Divider: Unlike PE0, this unit omits the `mod_div_by_2` hardware,
+ * as INTT scaling is likely handled elsewhere or the dual-multiplier path routes
+ * differently for this specific PE.
+ *
+ * Important Usage Note:
+ * The `ctrl_i` mode select signal is combinational to all internal MUXes. The Top-Level
+ * AU Controller MUST hold `ctrl_i` steady for the entire duration of an operation and
+ * insert a pipeline flush (wait for `valid_o` to clear) before switching to a new mode
+ * to prevent structural hazards (Ghost Pulses).
+ *
+ * Supported Modes & Latency:
+ * | Mode (ctrl_i)    | Operation                  | U Out       | V Out       | M Out         | Latency (U,V / M) |
+ * |------------------|----------------------------|-------------|-------------|---------------|-------------------|
+ * | PE_MODE_NTT      | Number Theoretic Transform | A*W1 + B*W2 | A*W1 - B*W2 | -             | 4 CCs / -         |
+ * | PE_MODE_INTT     | Inverse NTT                | (A+B)*W1    | (A-B)*W2    | -             | 4 CCs / -         |
+ * | PE_MODE_CWM      | Coordinate-Wise Mult       | A*W1        | B*W2        | A*W1 + B*W2   | 3 CCs / 4 CCs     |
+ * | PE_MODE_COMP     | Compression                | A*W1        | B*W2        | -             | 3 CCs / -         |
+ * | PE_MODE_DECOMP   | Decompression              | A*W1        | B*W2        | -             | 3 CCs / -         |
+ * | PE_MODE_ADDSUB   | Point-wise Add/Sub         | A + B       | A - B       | -             | 1 CC  / -         |
  */
 
 import poly_arith_pkg::*;
