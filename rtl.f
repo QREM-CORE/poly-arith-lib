@@ -13,4 +13,5 @@ rtl/delay_n.sv
 
 # --- Processing Elements (PEs) ---
 rtl/pe0.sv
+rtl/pe2.sv
 rtl/pe3.sv

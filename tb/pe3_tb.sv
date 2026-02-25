@@ -129,7 +129,7 @@ module pe3_tb();
             exp.u = mod_add(a, b);
             exp.v = mod_sub(a, b);
         end
-        else if (mode == PE_MODE_CODECO1 || mode == PE_MODE_CODECO2) begin
+        else if (mode == PE_MODE_COMP || mode == PE_MODE_DECOMP) begin
             exp.u = a;
             exp.v = mod_mul(b, eff_w);
         end
@@ -266,14 +266,14 @@ module pe3_tb();
         flush_pipeline();
 
         // --------------------------------------------------
-        // Pipelined Stream: Co/Deco Mode
+        // Pipelined Stream: Compression & Decompression Mode
         // --------------------------------------------------
-        $display("--- Testing Streaming Compression (Co/Deco) Mode ---");
-        drive_pipeline(0, 0, 0, 0, PE_MODE_CODECO1, "CODECO: All Zeros");
-        drive_pipeline(1234, 500, 10, 999, PE_MODE_CODECO1, "CODECO: Simple Standard");
-        drive_pipeline(3328, 0, 0, 0, PE_MODE_CODECO1, "CODECO: A-Passthrough Max Check");
-        drive_pipeline(1234, 1, 1, 999, PE_MODE_CODECO1, "CODECO: Multiplier Identity");
-        drive_pipeline(3328, 3328, 3328, 999, PE_MODE_CODECO1, "CODECO: Max Values");
+        $display("--- Testing Streaming Compression / Decompression Mode ---");
+        drive_pipeline(0, 0, 0, 0, PE_MODE_COMP, "COMP: All Zeros");
+        drive_pipeline(1234, 500, 10, 999, PE_MODE_COMP, "COMP: Simple Standard");
+        drive_pipeline(3328, 0, 0, 0, PE_MODE_COMP, "COMP: A-Passthrough Max Check");
+        drive_pipeline(1234, 1, 1, 999, PE_MODE_DECOMP, "DECOMP: Multiplier Identity");
+        drive_pipeline(3328, 3328, 3328, 999, PE_MODE_DECOMP, "DECOMP: Max Values");
         flush_pipeline();
 
         // --------------------------------------------------
@@ -292,13 +292,14 @@ module pe3_tb();
             rw  = $urandom_range(0, 3328);
             rtf = $urandom_range(0, 3328);
 
-            mode_sel = $urandom_range(0, 4);
+            mode_sel = $urandom_range(0, 5);
             case(mode_sel)
                 0: rmode = PE_MODE_NTT;
                 1: rmode = PE_MODE_INTT;
                 2: rmode = PE_MODE_CWM;
                 3: rmode = PE_MODE_ADDSUB;
-                4: rmode = PE_MODE_CODECO1;
+                4: rmode = PE_MODE_COMP;
+                5: rmode = PE_MODE_DECOMP;
             endcase
 
             // Controller Emulation: Flush pipeline if mode switches!
