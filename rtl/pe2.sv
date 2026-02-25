@@ -28,8 +28,10 @@ module pe2 (
     // Data Outputs
     output  coeff_t         u2_o,
     output  coeff_t         v2_o,
+    output  logic           valid_o,
+
     output  coeff_t         m_o,
-    output  logic           valid_o
+    output  logic           valid_m_o
 );
 
     // =========================================================================
@@ -38,13 +40,25 @@ module pe2 (
 
     // ============= Delay Register Wires =============
 
+    // -------- Delay 4 Valid Register (for NTT and INTT) --------
+    logic delay_4_valid_data_i;
+    logic delay_4_valid_data_o;
+
+    // -------- Delay 3 Valid Register (for CWM and CO/DECO) --------
+    logic delay_3_valid_data_i;
+    logic delay_3_valid_data_o;
+
+    // -------- Delay 1 Valid Register (for ADD/SUB Mode) --------
+    logic delay_1_valid_data_i;
+    logic delay_1_valid_data_o;
+
     // -------- W1 Input Delay 1 Register --------
     coeff_t delay_1_w1_data_i;
     coeff_t delay_1_w1_data_o;
 
     // -------- W2 Input Delay 1 Register --------
-    coeff_t delay_2_w1_data_i;
-    coeff_t delay_2_w1_data_o;
+    coeff_t delay_1_w2_data_i;
+    coeff_t delay_1_w2_data_o;
 
     // -------- Delay 1 Addition Output Register --------
     // Inputs
@@ -95,6 +109,51 @@ module pe2 (
     // Delay Register Instantiations
     // =========================================================================
 
+    // 4-Cycle Pipeline (NTT, INTT)
+    delay_n #(
+        .DWIDTH(1),
+        .DEPTH(4)
+    ) u_delay_4_valid (
+        .clk(clk),
+        .rst(rst),
+
+        .data_i(delay_4_valid_data_i),
+        .data_o(delay_4_valid_data_o)
+    );
+    assign delay_4_valid_data_i = ( ctrl_i == PE_MODE_NTT  ||
+                                    ctrl_i == PE_MODE_INTT ||
+                                    ctrl_i == PE_MODE_CWM  )
+                                    ? valid_i : 1'b0;
+
+    // 3-Cycle Pipeline (CWM, CODECO)
+    delay_n #(
+        .DWIDTH(1),
+        .DEPTH(3)
+    ) u_delay_3_valid (
+        .clk(clk),
+        .rst(rst),
+
+        .data_i(delay_3_valid_data_i),
+        .data_o(delay_3_valid_data_o)
+    );
+    assign delay_3_valid_data_i = ( ctrl_i == PE_MODE_CWM     ||
+                                    ctrl_i == PE_MODE_CODECO1 ||
+                                    ctrl_i == PE_MODE_CODECO2 )
+                                    ? valid_i : 1'b0;
+
+    // 1-Cycle Pipeline (ADDSUB)
+    delay_n #(
+        .DWIDTH(1),
+        .DEPTH(1)
+    ) u_delay_1_valid (
+        .clk(clk),
+        .rst(rst),
+
+        .data_i(delay_1_valid_data_i),
+        .data_o(delay_1_valid_data_o)
+    );
+    assign delay_1_valid_data_i = (ctrl_i == PE_MODE_ADDSUB) ? valid_i : 1'b0;
+
     // -------- W1 Input Delay 1 Register --------
     delay_n #(
         .DWIDTH (COEFF_WIDTH), // 12-bit
@@ -106,18 +165,20 @@ module pe2 (
         .data_i(delay_1_w1_data_i),
         .data_o(delay_1_w1_data_o)
     );
+    assign delay_1_w1_data_i = w1_i;
 
     // -------- W2 Input Delay 1 Register --------
     delay_n #(
         .DWIDTH (COEFF_WIDTH), // 12-bit
         .DEPTH  (1)
-    ) u_delay_1_w1 (
+    ) u_delay_1_w2 (
         .clk(clk),
         .rst(rst),
 
-        .data_i(delay_2_w1_data_i),
-        .data_o(delay_2_w1_data_o)
+        .data_i(delay_1_w2_data_i),
+        .data_o(delay_1_w2_data_o)
     );
+    assign delay_1_w2_data_i = w2_i;
 
     // -------- Delay 1 Addition Output Register --------
     delay_n #(
@@ -165,7 +226,7 @@ module pe2 (
     assign mod_mul_1_op1_i = ctrl_i[0] ? delay_1_add_data_o : a2_i;
     assign mod_mul_1_op2_i = ctrl_i[0] ? delay_1_w1_data_o : w1_i;
 
-    // -------- Modular Multiplier 1 Instantiation --------
+    // -------- Modular Multiplier 2 Instantiation --------
     mod_mul u_mod_mul_2 (
         .clk           (clk),
         .rst           (rst),
@@ -178,7 +239,7 @@ module pe2 (
         .valid_o       ()
     );
 
-    assign mod_mul_2_op1_i = ctrl_i[0] ? delay_2_w1_data_o : w2_i;
+    assign mod_mul_2_op1_i = ctrl_i[0] ? delay_1_w2_data_o : w2_i;
     assign mod_mul_2_op2_i = ctrl_i[0] ? delay_1_sub_data_o : b2_i;
 
     // -------- Modular Adder Instantiation --------
@@ -198,19 +259,33 @@ module pe2 (
 
         .result_o   (mod_sub_result_o)
     );
-    assign mod_sub_op1_i    = ctrl_i[0] ? b2_i : mod_mul_2_result_o;
-    assign mod_sub_op2_i    = ctrl_i[0] ? a2_i : mod_mul_1_result_o;
+    assign mod_sub_op1_i    = ctrl_i[0] ? a2_i : mod_mul_1_result_o;
+    assign mod_sub_op2_i    = ctrl_i[0] ? b2_i : mod_mul_2_result_o;
 
     // =========================================================================
     // PE Outputs
     // =========================================================================
 
-    assign u2_mux_i = ctrl_i[2] ? mod_mul_1_result_o : delay_1_add_data_i;
+    // Data Output
+    assign u2_mux_i = ctrl_i[2] ? mod_mul_1_result_o : delay_1_add_data_o;
     assign v2_mux_i = ctrl_i[2] ? mod_mul_2_result_o : delay_1_sub_data_o;
 
     assign u2_o = ctrl_i[1] ? u2_mux_i : mod_mul_1_result_o;
     assign v2_o = ctrl_i[1] ? v2_mux_i : mod_mul_2_result_o;
-    assign m_o = delay_1_add_data_i;
+    assign m_o = delay_1_add_data_o;
 
-    // COME BACK TO VALID PROPAGATION LOGIC
+    // Dynamic Valid Output Multiplexer
+    always_comb begin
+        if (ctrl_i == PE_MODE_ADDSUB) begin
+            valid_o = delay_1_valid_data_o;
+        end else if (ctrl_i == PE_MODE_CWM || ctrl_i == PE_MODE_CODECO1 || ctrl_i == PE_MODE_CODECO2) begin
+            valid_o = delay_3_valid_data_o;
+        end else begin
+            valid_o = delay_4_valid_data_o;
+        end
+    end
+
+    // Dedicated Valid Output for the M_O Cross-Term (Strictly 4-cycle latency in CWM)
+    assign valid_m_o = (ctrl_i == PE_MODE_CWM) ? delay_4_valid_data_o : 1'b0;
+
 endmodule
