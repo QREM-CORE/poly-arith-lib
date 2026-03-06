@@ -164,7 +164,7 @@ module pe_unit (
         valid_o = pe0_valid_o; // Standardize valid_o to PE0's output
 
         case(ctrl_i)
-            PE_MODE_CWM, default : begin
+            PE_MODE_CWM : begin
                 // External Mapping assumption for CWM:
                 // x0 = f_2i, x1 = f_2i+1
                 // y0 = g_2i, y1 = g_2i+1
@@ -324,6 +324,10 @@ module pe_unit (
                 z1_o = pe2_u2_o;      // U2
                 z2_o = pe2_v2_o;      // V2
                 z3_o = pe3_v3_o;      // V3
+            end
+
+            default : begin
+                
             end
         endcase
     end
