@@ -16,3 +16,4 @@ rtl/pe0.sv
 rtl/pe1.sv
 rtl/pe2.sv
 rtl/pe3.sv
+rtl/pe_unit.sv
