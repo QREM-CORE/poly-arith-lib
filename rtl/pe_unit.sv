@@ -327,7 +327,7 @@ module pe_unit (
             end
 
             default : begin
-                
+
             end
         endcase
     end
