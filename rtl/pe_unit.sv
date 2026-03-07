@@ -327,7 +327,12 @@ module pe_unit (
             end
 
             default : begin
+                // Safely falls back to top-level default assignments ('0)
 
+                // Simulation-only error catching for invalid control states
+                // synthesis translate_off
+                $error("[AU Wrapper] ERROR: Invalid pe_mode_e state received: %b", ctrl_i);
+                // synthesis translate_on
             end
         endcase
     end
