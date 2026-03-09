@@ -1,23 +1,24 @@
 """
 ================================================================================
-SCRIPT: Radix-4/2 NTT Hardware Pipeline Visualizer
+SCRIPT: Radix-4/2 NTT Hardware Pipeline Visualizer (Inha Uni Algorithm 5)
 AUTHOR: Kiet Le
 PURPOSE:
-    This script "unrolls" the ML-KEM NTT (Number Theoretic Transform) by
-    grouping array indices into hardware-ready execution packets. It simulates
-    the Unified Polynomial Arithmetic Module (UniPAM) architecture, which
-    processes two software stages (Algorithm 9) simultaneously.
+    This script "unrolls" the ML-KEM NTT by grouping array indices into
+    hardware-ready execution packets following the specific scheduling
+    of Algorithm 5. It simulates the UniPAM architecture's data-fetching
+    stride pattern.
 
 HARDWARE MAPPING:
-    - Pass (Radix-2): Represents the "odd stage out" where only one column
-      of Processing Elements (PEs) is fully utilized.
-    - Pass (Radix-4): Represents the "High-Throughput" mode where data flows
-      through the PE0/PE2 column directly into the PE1/PE3 column via internal
-      feedback wires, skipping a memory write-back cycle.
+    - Pass 1-3 (Radix-4): The "High-Throughput" mode. Data flows through
+      PE0/PE2 into PE1/PE3. These passes handle the larger strides
+      (e.g., len=128 down to 4).
+    - Pass 4 (Radix-2): The "Odd Stage Out". This occurs at the VERY END
+      of the NTT (len=2). Only PE0 and PE2 are active, processing
+      contiguous blocks of 4 coefficients to simplify AGU logic.
 
-INPUTS:
-    - N: Polynomial degree (Default 16 for clarity; 256 for ML-KEM standard).
-    - filename: The target text file to save the execution roadmap.
+ALGORITHM ALIGNMENT:
+    - Matches Inha University Algorithm 5 (Mixed-Radix-4/2 NTT).
+    - Optimized for a 4-bank Conflict-Free Memory Interface (CMI).
 ================================================================================
 """
 
@@ -49,7 +50,7 @@ def unroll_ntt_radix42_to_file(filename="ntt_radix42_output.txt", N=16):
             # ---------------------------------------------------------
             # THE RADIX-2 PASS (Handles the odd stage out)
             # ---------------------------------------------------------
-            if stages_remaining % 2 != 0:
+            if stages_remaining == 1:
                 length = N // (2 ** current_stage)
                 print(f"\n=== PASS {pass_num} (Radix-2): Stage {current_stage} (len = {length}) ===", file=f)
 
