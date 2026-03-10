@@ -563,11 +563,11 @@ module cwm_mac_integration_tb();
     endtask
 
     // ==========================================================
-    // Phase 2: Streaming CWM -> MAC with k=2 Accumulation
+    // Phase 3: Streaming CWM -> MAC with k=2 Accumulation
     // Simulates: result = A[i][0]*s[0] + A[i][1]*s[1]
     // ==========================================================
     task automatic test_streaming_mac_k2();
-        $display("--- Phase 2: Streaming CWM -> MAC (k=2) ---");
+        $display("--- Phase 3: Streaming CWM -> MAC (k=2) ---");
 
         // Generate stimulus
         generate_stimulus(stim_pass0, exp_pass0);
@@ -621,7 +621,7 @@ module cwm_mac_integration_tb();
     endtask
 
     // ==========================================================
-    // Phase 3: Known-Value Directed Test
+    // Phase 2: Known-Value Directed Test
     // Uses hand-calculated values for deterministic verification.
     // ==========================================================
     task automatic test_known_values();
@@ -629,7 +629,7 @@ module cwm_mac_integration_tb();
         coeff_t expected_acc_c0, expected_acc_c1;
         logic found_j0, found_j1;
 
-        $display("--- Phase 3: Known-Value Directed Test ---");
+        $display("--- Phase 2: Known-Value Directed Test ---");
 
         // j=0: f=(1,0), g=(1,0), zeta=17
         // c0 = 1*1 + 17*0*0 = 1, c1 = -(1*0 + 0*1) = 0
@@ -738,16 +738,6 @@ module cwm_mac_integration_tb();
     endtask
 
     // ==========================================================
-    // Phase 4: MAC Direct-Drive (Skipped in integration TB)
-    // ==========================================================
-    task automatic test_mac_direct_stress();
-        $display("--- Phase 4: MAC Direct-Drive Stress ---");
-        $display("   (Skipped: mac_adder inputs are wired to pe_unit outputs)");
-        $display("   Run standalone mac_adder_tb for direct MAC stress coverage.");
-        $display("");
-    endtask
-
-    // ==========================================================
     // Main Test Procedure
     // ==========================================================
     initial begin
@@ -788,11 +778,10 @@ module cwm_mac_integration_tb();
         $display("");
 
         // ---- Run Test Phases ----
-        calibrate_pipeline();
-        test_single_shot_init();
-        test_known_values();
-        test_streaming_mac_k2();
-        test_mac_direct_stress();
+        calibrate_pipeline();          // Phase 0
+        test_single_shot_init();       // Phase 1
+        test_known_values();           // Phase 2
+        test_streaming_mac_k2();       // Phase 3
 
         // ---- Final Summary ----
         repeat(10) @(posedge clk);
