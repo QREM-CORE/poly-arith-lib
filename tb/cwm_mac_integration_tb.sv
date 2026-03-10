@@ -339,22 +339,29 @@ module cwm_mac_integration_tb();
         // Set MAC init control
         mac_init_i <= is_first_pass ? 1'b1 : 1'b0;
 
-        // Drive CWM stimulus
-        drive_cwm_pass(stim);
-
-        // Provide PM feedback for accumulation
+        // Start PM feedback driver BEFORE CWM drive so feedback
+        // values (sim_pm) are pre-loaded on mac_b0/b1 well before
+        // the first valid_aligned fires.
         fork
             begin : feedback_driver
                 int fb_idx;
                 fb_idx = 0;
                 forever begin
                     @(posedge clk);
-                    if (!is_first_pass && fb_idx < NUM_PAIRS) begin
-                        mac_b0_i <= sim_pm_c0[fb_idx];
-                        mac_b1_i <= sim_pm_c1[fb_idx];
-
-                        if (valid_aligned) begin
+                    if (!is_first_pass) begin
+                        // On valid_aligned, advance fb_idx FIRST so the
+                        // subsequent NBA schedules the NEXT pair's feedback.
+                        // The MAC FF samples the CURRENT mac_b0_i (set by
+                        // the prior cycle's NBA = current pair's value).
+                        if (valid_aligned && fb_idx < NUM_PAIRS) begin
                             fb_idx++;
+                        end
+                        if (fb_idx < NUM_PAIRS) begin
+                            mac_b0_i <= sim_pm_c0[fb_idx];
+                            mac_b1_i <= sim_pm_c1[fb_idx];
+                        end else begin
+                            mac_b0_i <= '0;
+                            mac_b1_i <= '0;
                         end
                     end else begin
                         mac_b0_i <= '0;
@@ -363,6 +370,9 @@ module cwm_mac_integration_tb();
                 end
             end
         join_none
+
+        // Drive CWM stimulus (feedback driver already running)
+        drive_cwm_pass(stim);
 
         // Wait for pipeline to fill and all results to emerge
         repeat(TOTAL_LATENCY + NUM_PAIRS + 5) @(posedge clk);
@@ -659,22 +669,26 @@ module cwm_mac_integration_tb();
         pe_y0 <= '0; pe_y1 <= '0;
         zeta_stim <= '0;
 
-        // Wait for j=0 MAC output
+        // Wait for j=0 MAC output and capture result immediately.
+        // The MAC output register updates every cycle (not gated by
+        // valid_i), so z0_o is overwritten to 0 after mac_valid_o
+        // deasserts. We MUST capture during the mac_valid_o pulse.
         found_j0 = 0;
-        for (int i = 0; i < TOTAL_LATENCY + 5; i++) begin
-            @(posedge clk);
-            if (mac_valid_o && !found_j0) begin
-                $display("   After j=0: mac_z0=%0d (exp %0d), mac_z1=%0d (exp %0d)",
-                         mac_z0_o, exp_j0.c0, mac_z1_o, exp_j0.c1);
-                found_j0 = 1;
-            end
-        end
-
-        // Save j=0 result and drive j=1 (accumulate)
         begin
             coeff_t saved_c0, saved_c1;
-            saved_c0 = mac_z0_o;
-            saved_c1 = mac_z1_o;
+            saved_c0 = '0;
+            saved_c1 = '0;
+
+            for (int i = 0; i < TOTAL_LATENCY + 5; i++) begin
+                @(posedge clk);
+                if (mac_valid_o && !found_j0) begin
+                    saved_c0 = mac_z0_o;
+                    saved_c1 = mac_z1_o;
+                    $display("   After j=0: mac_z0=%0d (exp %0d), mac_z1=%0d (exp %0d)",
+                             mac_z0_o, exp_j0.c0, mac_z1_o, exp_j0.c1);
+                    found_j0 = 1;
+                end
+            end
 
             repeat(10) @(posedge clk);
             mac_init_i <= 1'b0;
