@@ -694,48 +694,14 @@ module cwm_mac_integration_tb();
     // mac_adder accumulation with CWM-like data patterns.
     // ==========================================================
     task automatic test_mac_direct_stress();
-        cwm_result_t cwm0, cwm1, cwm2;
-        coeff_t acc_c0, acc_c1;
+        $display("--- Phase 4: MAC Direct-Drive Stress ---");
 
-        $display("--- Phase 4: MAC Direct-Drive Stress (50 sequences) ---");
-
-        rst = 1;
-        pe_valid_i = 0;
-        repeat(5) @(posedge clk);
-        rst = 0;
-        repeat(2) @(posedge clk);
-
-        // For this test, drive mac_adder directly (not through pe_unit)
-        // with computed BaseCaseMultiply results
-        for (int seq = 0; seq < 50; seq++) begin
-            coeff_t f0, f1, g0, g1, zeta;
-            int k;
-
-            k = $urandom_range(2, 4); // Random k
-
-            // j=0: Init
-            f0 = $urandom_range(0, MODULUS - 1);
-            f1 = $urandom_range(0, MODULUS - 1);
-            g0 = $urandom_range(0, MODULUS - 1);
-            g1 = $urandom_range(0, MODULUS - 1);
-            zeta = ZETA_MUL_TABLE[$urandom_range(0, 127)];
-            cwm0 = gm_basecase_multiply(f0, f1, g0, g1, zeta);
-
-            @(posedge clk);
-            mac_valid_i <= 1'b1; // Override the wired connection temporarily
-            // (In this phase, pe_unit is idle so valid_aligned = 0)
-
-            // Actually, since mac_valid_i is assigned, we need to
-            // use force/release for direct drive
-        end
-
-        // NOTE: Since mac_valid_i is wired to valid_aligned, we cannot
-        // easily override it. The standalone mac_adder_tb already covers
-        // direct-drive stress testing comprehensively.
-        // This phase logs that the standalone TB should be used for
-        // exhaustive MAC-only verification.
-        $display("   (Redirecting to standalone mac_adder_tb for direct stress)");
-        $display("   Standalone TB covers: init/acc modes, k=2/3/4, 200+ random vectors.");
+        // mac_valid_i is continuously assigned from valid_aligned,
+        // so direct MAC-only drive is not possible in this integration TB.
+        // The standalone mac_adder_tb provides exhaustive direct-drive
+        // coverage including: init/acc modes, k=2/3/4, 200+ random vectors.
+        $display("   (Skipped — mac_adder inputs are wired to pe_unit outputs)");
+        $display("   Run standalone mac_adder_tb for direct MAC stress coverage.");
         $display("");
     endtask
 
