@@ -1,23 +1,25 @@
 """
 ================================================================================
-SCRIPT: Radix-4/2 INTT Hardware Pipeline Visualizer
+SCRIPT: Radix-4/2 INTT Hardware Pipeline Visualizer (Inha Uni Algorithm 6)
 AUTHOR: Kiet Le
 PURPOSE:
-    This script "unrolls" the ML-KEM INTT (Inverse Number Theoretic Transform)
-    by grouping array indices into hardware-ready execution packets. It maps
-    the Gentleman-Sande butterflies to the UniPAM architecture.
+    This script "unrolls" the ML-KEM INTT by grouping array indices into
+    hardware-ready execution packets following the specific scheduling
+    of Algorithm 6. It maps Gentleman-Sande butterflies to the physical
+    PE matrix.
 
 HARDWARE MAPPING:
-    - Pass (Radix-4): The "High-Throughput" mode. Data flows through PE1/PE3
-      (Stage A, smaller len) directly into PE2/PE0 (Stage B, larger len) via
-      internal feedback wires, skipping a memory write-back cycle.
-    - Pass (Radix-2): Represents the "odd stage out". In the INTT, this is
-      always the FINAL stage (len=128 for ML-KEM) where only one column of
-      PEs is utilized to finish the algorithm.
+    - Pass 1 (Radix-2): The "Odd Stage Out". Unlike the NTT, the INTT
+      BEGINS with the Radix-2 pass (len=2). This allows the hardware
+      to reuse the same sequential AGU logic from the NTT's end.
+    - Pass 2-4 (Radix-4): The "High-Throughput" mode. Data flows through
+      PE1/PE3 into PE2/PE0. These passes handle the growing strides
+      (e.g., len=4 up to 128).
 
-INPUTS:
-    - N: Polynomial degree (Default 16 for clarity; 256 for ML-KEM standard).
-    - filename: The target text file to save the execution roadmap.
+ALGORITHM ALIGNMENT:
+    - Matches Inha University Algorithm 6 (Mixed-Radix-4/2 INTT).
+    - Distributes the 1/128 scaling factor across all 7 stages,
+      eliminating the need for a final scaling pass.
 ================================================================================
 """
 
@@ -49,7 +51,7 @@ def unroll_intt_radix42_to_file(filename="intt_radix42_output.txt", N=16):
             # ---------------------------------------------------------
             # THE RADIX-2 PASS (Handles the odd stage out at the END)
             # ---------------------------------------------------------
-            if stages_remaining == 1 and total_stages % 2 != 0:
+            if current_stage == 1:
                 length = 2 ** current_stage
                 print(f"\n=== PASS {pass_num} (Radix-2): Stage {current_stage} (len = {length}) ===", file=f)
 
@@ -112,10 +114,6 @@ def unroll_intt_radix42_to_file(filename="intt_radix42_output.txt", N=16):
 
                 current_stage += 2
                 pass_num += 1
-
-        # The Final Scaling Step
-        print(f"\n=== FINAL SCALING ===", file=f)
-        print(f"  Multiply all entries f[0] to f[{N-1}] by 3303 mod q", file=f)
 
     print(f"Output successfully saved to {filename}")
 
