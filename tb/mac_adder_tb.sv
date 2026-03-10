@@ -311,16 +311,14 @@ module mac_adder_tb();
         // Drive data, then assert reset mid-stream
         // --------------------------------------------------
         $display("--- Test 9: Reset Behavior ---");
-        // Drive one vector but don't flush — we'll reset instead
-        @(posedge clk);
-        valid_i <= 1'b1;
-        init_i  <= 1'b1;
-        a0_i    <= 12'd111;
-        b0_i    <= 12'd0;
-        a1_i    <= 12'd222;
-        b1_i    <= 12'd0;
-        // Don't push to expected_queue — we expect this to be squashed by reset
+        // Drive one valid vector. With 1 CC registered latency, the DUT
+        // captures this result on the next posedge BEFORE reset takes
+        // effect one cycle later. drive_mac pushes the expected value
+        // so the monitor can verify the legitimate output.
+        drive_mac(12'd111, 12'd0, 12'd222, 12'd0, 1'b1, "Reset: Pre-Reset Capture");
 
+        // Assert reset — takes effect on the NEXT posedge, clearing
+        // the registered outputs that were just captured above.
         @(posedge clk);
         valid_i <= 1'b0;
         rst     <= 1'b1;  // Assert reset
