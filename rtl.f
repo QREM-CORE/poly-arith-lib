@@ -11,6 +11,9 @@ rtl/mod_uni_add_sub.sv
 # --- Misc Modules ---
 rtl/delay_n.sv
 
+# --- MAC Adder ---
+rtl/mac_adder.sv
+
 # --- Processing Elements (PEs) ---
 rtl/pe0.sv
 rtl/pe1.sv
