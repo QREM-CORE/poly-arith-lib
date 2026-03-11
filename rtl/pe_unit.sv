@@ -359,7 +359,7 @@ module pe_unit (
                 valid_o = pe0_valid_o & pe2_valid_o;
             end
 
-            PE_MODE_ADD, PE_MODE_SUB : begin
+            PE_MODE_ADDSUB : begin
                 // ---------------------------------------------------------
                 // External Mapping for Point-wise ADD/SUB (8 Inputs Used):
                 // op_a0_i = X_0         op_b0_i = Y_0
