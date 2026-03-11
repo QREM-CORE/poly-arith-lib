@@ -105,7 +105,7 @@ module pe0_tb();
         expected_result_t exp;
         coeff_t t;
 
-        // 1. Calculate Expected Values (UPDATED GOLDEN MODEL)
+        // 1. Calculate Expected Values
         if (mode == PE_MODE_NTT) begin
             t = mod_mul(b, w);
             exp.u = mod_add(a, t);
