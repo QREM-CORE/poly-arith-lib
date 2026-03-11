@@ -23,6 +23,7 @@ module pe_unit (
 
     input   logic           valid_i,
     input   pe_mode_e       ctrl_i,
+    input   logic           addsub_sel_i, // 0 = Add (U), 1 = Sub (V)
 
     // ==========================================
     // Primary Operand Bus (Fed by SRAM Bank A)
@@ -90,7 +91,7 @@ module pe_unit (
     // =========================================================================
     // Pipeline Synchronization Delays
     // =========================================================================
-    
+
     // -------- Twiddle Factor Input Delays --------
     coeff_t op_b0_d3, op_b0_d4;
     coeff_t op_b1_d4;
@@ -389,13 +390,15 @@ module pe_unit (
                 pe3_a3_i = op_a3_i;
                 pe3_b3_i = op_b3_i;
 
-                // Outputs
-                if (ctrl_i == PE_MODE_ADD) begin
+                // Outputs - Use the 1-bit flag to select U or V
+                if (addsub_sel_i == 1'b0) begin
+                    // Addition Mode
                     z0_o = pe0_u0_o;
                     z1_o = pe1_u1_o;
                     z2_o = pe2_u2_o;
                     z3_o = pe3_u3_o;
                 end else begin
+                    // Subtraction Mode
                     z0_o = pe0_v0_o;
                     z1_o = pe1_v1_o;
                     z2_o = pe2_v2_o;
