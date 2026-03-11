@@ -14,6 +14,10 @@ rtl/delay_n.sv
 # --- MAC Adder ---
 rtl/mac_adder.sv
 
+# --- Twiddle Factor Generation ---
+rtl/tf_rom.sv
+rtl/tf_addr_gen.sv
+
 # --- Processing Elements (PEs) ---
 rtl/pe0.sv
 rtl/pe1.sv
