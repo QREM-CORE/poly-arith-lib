@@ -173,6 +173,32 @@ module pe_unit_tb();
             exp.z2 = mod_add(pe2_x1_1, pe2_w_x3);                   // U2
             exp.z3 = mod_sub(pe2_x1_1, pe2_w_x3);                   // V2
         end
+        else if (mode == PE_MODE_INTT && mode_sel == 1'b0) begin
+            // ---------------------------------------------------
+            // INTT Radix-4 Mathematical Definition
+            // X0=a0, X1=a1, X2=a2, X3=a3
+            // w_2^-1=b0, w_1^-1=b1, w_3^-1=b2, w_4^-1=b3
+            // U2 = (w4(X0 - X1) + (X2 - X3))w_1^-1
+            // V2 = (w4(X0 - X1) - (X2 - X3))w_3^-1
+            // U0 = ((X0 + X1)/2 + (X2 + X3)/2)/2
+            // V0 = w_2^-1((X0 + X1)/2 - (X2 + X3)/2)
+            // ---------------------------------------------------
+
+            // Note: 1665 is the modulo 3329 inverse of 2 (i.e., division by 2)
+
+            // Stage 1 (PE1 & PE3)
+            coeff_t pe1_u = mod_mul(mod_add(a2, a3), 1665); // (X2 + X3) / 2
+            coeff_t pe1_v = mod_sub(a2, a3);                // (X2 - X3)
+
+            coeff_t pe3_u = mod_mul(mod_add(a0, a1), 1665); // (X0 + X1) / 2
+            coeff_t pe3_v = mod_mul(mod_sub(a0, a1), b3);   // (X0 - X1) * w4
+
+            // Stage 2 (PE0 & PE2 mapped to Z outputs)
+            exp.z0 = mod_mul(mod_add(pe3_u, pe1_u), 1665);  // U0
+            exp.z1 = mod_mul(mod_add(pe3_v, pe1_v), b1);    // U2
+            exp.z2 = mod_mul(mod_sub(pe3_u, pe1_u), b0);    // V0
+            exp.z3 = mod_mul(mod_sub(pe3_v, pe1_v), b2);    // V2
+        end
 
         // 2. Push expected result to queue
         expected_queue.push_back(exp);
@@ -223,11 +249,12 @@ module pe_unit_tb();
                     if (z1_o !== exp.z1 || z2_o !== exp.z2) match = 1'b0;
                 end
                 else if (exp.mode == PE_MODE_NTT && exp.mode_sel == 1'b0) begin
-                    // Radix-4 NTT checks all 4 outputs
                     if (z0_o !== exp.z0 || z1_o !== exp.z1 || z2_o !== exp.z2 || z3_o !== exp.z3) match = 1'b0;
                 end
                 else if (exp.mode == PE_MODE_NTT && exp.mode_sel == 1'b1) begin
-                    // Radix-2 NTT checks all 4 outputs
+                    if (z0_o !== exp.z0 || z1_o !== exp.z1 || z2_o !== exp.z2 || z3_o !== exp.z3) match = 1'b0;
+                end
+                else if (exp.mode == PE_MODE_INTT && exp.mode_sel == 1'b0) begin
                     if (z0_o !== exp.z0 || z1_o !== exp.z1 || z2_o !== exp.z2 || z3_o !== exp.z3) match = 1'b0;
                 end
 
@@ -250,6 +277,12 @@ module pe_unit_tb();
                         if (z0_o !== exp.z0) $display("   Z0 (U0) Mismatch! Exp: %0d, Got: %0d", exp.z0, z0_o);
                         if (z1_o !== exp.z1) $display("   Z1 (V0) Mismatch! Exp: %0d, Got: %0d", exp.z1, z1_o);
                         if (z2_o !== exp.z2) $display("   Z2 (U2) Mismatch! Exp: %0d, Got: %0d", exp.z2, z2_o);
+                        if (z3_o !== exp.z3) $display("   Z3 (V2) Mismatch! Exp: %0d, Got: %0d", exp.z3, z3_o);
+                    end
+                    else if (exp.mode == PE_MODE_INTT && exp.mode_sel == 1'b0) begin
+                        if (z0_o !== exp.z0) $display("   Z0 (U0) Mismatch! Exp: %0d, Got: %0d", exp.z0, z0_o);
+                        if (z1_o !== exp.z1) $display("   Z1 (U2) Mismatch! Exp: %0d, Got: %0d", exp.z1, z1_o);
+                        if (z2_o !== exp.z2) $display("   Z2 (V0) Mismatch! Exp: %0d, Got: %0d", exp.z2, z2_o);
                         if (z3_o !== exp.z3) $display("   Z3 (V2) Mismatch! Exp: %0d, Got: %0d", exp.z3, z3_o);
                     end
 
@@ -297,10 +330,7 @@ module pe_unit_tb();
         drive_pipeline(100, 20, 50, 40,   0,  0, 0, 0,   PE_MODE_CWM,  1'b0,   "CWM: w is Zero");
         drive_pipeline(3328, 3328, 3328, 3328, 3328, 0, 0, 0, PE_MODE_CWM, 1'b0, "CWM: Max Stress");
 
-        // --------------------------------------------------
-        // Random Pipeline Saturation Test
-        // --------------------------------------------------
-        $display("--- Testing CWM Random Stress Loop ---");
+        // CWM Random Pipeline Saturation Test
         begin
             // 1. Declare the variables first
             coeff_t rf0, rf1, rg0, rg1, rw;
@@ -332,6 +362,7 @@ module pe_unit_tb();
         drive_pipeline(100,  0,  0,  0,   0, 0, 0, 0,  PE_MODE_NTT,  1'b0,   "NTT R4: X0 Only");
         drive_pipeline(3328, 3328, 3328, 3328, 3328, 3328, 3328, 3328, PE_MODE_NTT, 1'b0, "NTT R4: Max Stress");
 
+        // NTT R4 Random Pipeline Saturation Test
         begin
             coeff_t rx0, rx1, rx2, rx3, rw2, rw1, rw3, rw4;
             for (int i = 0; i < 20; i++) begin
@@ -359,6 +390,7 @@ module pe_unit_tb();
         drive_pipeline(3328, 3328, 3328, 3328, 3328, 1, 3328, 0, PE_MODE_NTT, 1'b1, "NTT R2: Max Stress");
         // NOTE: b1 is explicitly driven to 1 below to ensure PE2 correctly bypasses multiplication!
 
+        // NTT R2 Random Pipeline Saturation Test
         begin
             coeff_t rx0, rx1, rx2, rx3, rwA, rwB;
             for (int i = 0; i < 20; i++) begin
@@ -367,6 +399,33 @@ module pe_unit_tb();
                 rwA = $urandom_range(0, 3328); rwB = $urandom_range(0, 3328);
                 // Explicitly pinning b1 to 1 for the random test vectors
                 drive_pipeline(rx0, rx1, rx2, rx3, rwA, 1, rwB, 0, PE_MODE_NTT, 1'b1, "NTT R2: Random Flow");
+            end
+        end
+        flush_pipeline();
+
+        // --------------------------------------------------
+        // Pipelined Stream: INTT Mode (Radix-4)
+        // op_a mapping: [X_0, X_1, X_2, X_3]
+        // op_b mapping: [w_2^-1, w_1^-1, w_3^-1, w_4^-1]
+        // --------------------------------------------------
+        $display("--- Testing Streaming INTT Mode (Radix-4, 8-Cycle Latency) ---");
+
+        //              X0  X1  X2  X3  w2'w1'w3'w4'   Mode          ModeSel Name
+        drive_pipeline(  0,  0,  0,  0,   0, 0, 0, 0,  PE_MODE_INTT, 1'b0,   "INTT R4: All Zeros");
+        drive_pipeline(  1,  1,  1,  1,   1, 1, 1, 1,  PE_MODE_INTT, 1'b0,   "INTT R4: All Ones");
+        drive_pipeline( 10, 20, 30, 40,   2, 3, 4, 5,  PE_MODE_INTT, 1'b0,   "INTT R4: Simple Math");
+        drive_pipeline(100,  0,  0,  0,   0, 0, 0, 0,  PE_MODE_INTT, 1'b0,   "INTT R4: X0 Only");
+        drive_pipeline(3328, 3328, 3328, 3328, 3328, 3328, 3328, 3328, PE_MODE_INTT, 1'b0, "INTT R4: Max Stress");
+
+        // INTT R4 Random Pipeline Saturation Test
+        begin
+            coeff_t rx0, rx1, rx2, rx3, rw2, rw1, rw3, rw4;
+            for (int i = 0; i < 20; i++) begin
+                rx0 = $urandom_range(0, 3328); rx1 = $urandom_range(0, 3328);
+                rx2 = $urandom_range(0, 3328); rx3 = $urandom_range(0, 3328);
+                rw2 = $urandom_range(0, 3328); rw1 = $urandom_range(0, 3328);
+                rw3 = $urandom_range(0, 3328); rw4 = $urandom_range(0, 3328);
+                drive_pipeline(rx0, rx1, rx2, rx3, rw2, rw1, rw3, rw4, PE_MODE_INTT, 1'b0, "INTT R4: Random Flow");
             end
         end
         flush_pipeline();
