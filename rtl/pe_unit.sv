@@ -13,6 +13,42 @@
  * Top-level wrapper for the Processing Elements.
  * Includes pipeline synchronization delays for cascaded Twiddle Factors
  * and Output Latency alignment.
+ *
+ * ==============================================================================
+ * PE_UNIT USER GUIDE (I/O MAPPING)
+ * ==============================================================================
+ * This module dynamically reconfigures its 8-port input interface based on the
+ * active ctrl_i state. The top-level Memory Controller/AGU MUST drive the op_a
+ * and op_b buses according to the tables below.
+ * 1. CWM (Coordinate-Wise Multiplication) -> mode_i = Don't Care
+ * op_a = [f_2i, f_2i+1, g_2i, g_2i+1]
+ * op_b = [omega, d/c, d/c, d/c]
+ * Outputs: z1_o = U3, z2_o = V0 (z0/z3 are unused)
+ * 2. NTT (Number Theoretic Transform) -> mode_i = 0 (Radix-4)
+ * op_a = [X_0, X_1, X_2, X_3]
+ * op_b = [w_2, w_1, w_3, w_4^1]
+ * Outputs: z0_o = U1, z1_o = V1, z2_o = U3, z3_o = V3
+ * 3. NTT (Number Theoretic Transform) -> mode_i = 1 (Radix-2)
+ * op_a = [X_0, X_1, X_2, X_3]
+ * op_b = [w_A, 12'd1, w_B, d/c] -> **NOTE: op_b1_i MUST be exactly 1**
+ * Outputs: z0_o = U0, z1_o = V0, z2_o = U2, z3_o = V2
+ * 4. INTT (Inverse NTT) -> mode_i = 0 (Radix-4)
+ * op_a = [X_0, X_1, X_2, X_3]
+ * op_b = [w_2^-1, w_1^-1, w_3^-1, w_4^-1]
+ * Outputs: z0_o = U0, z1_o = U2, z2_o = V0, z3_o = V2
+ * 5. INTT (Inverse NTT) -> mode_i = 1 (Radix-2)
+ * op_a = [X_0, X_1, X_2, X_3]
+ * op_b = [w_A^-1, 12'd1665, w_B^-1, d/c] -> **NOTE: op_b1_i MUST be 1665 (2^-1)**
+ * Outputs: z0_o = U0, z1_o = V0, z2_o = U2, z3_o = V2
+ * 6. ADDSUB (Point-wise Addition/Subtraction) -> mode_i = 0 (Add), 1 (Sub)
+ * op_a = [X_0, X_1, X_2, X_3]
+ * op_b = [Y_0, Y_1, Y_2, Y_3]
+ * Outputs: Z maps directly to the requested U (Add) or V (Sub) results.
+ * 7. COMP / DECOMP -> mode_i = Don't Care
+ * op_a = [X_0, X_1, X_2, X_3]
+ * op_b = [m/q, m/q, m/q, m/q]
+ * Outputs: z0_o = V0, z1_o = U2, z2_o = V2, z3_o = V3
+ * ==============================================================================
  */
 
 import poly_arith_pkg::*;
@@ -428,11 +464,6 @@ module pe_unit (
 
                     pe0_valid_i = valid_i;
                     pe2_valid_i = valid_i;
-
-                    // PE0 Routing
-                    pe0_a0_i = op_a0_i;
-                    pe0_b0_i = op_a2_i;
-                    pe0_w0_i = op_b0_i;
 
                     // PE0 Routing (Adjacent Elements: X0, X1)
                     pe0_a0_i = op_a0_i;   // X0
