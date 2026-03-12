@@ -434,10 +434,15 @@ module pe_unit (
                     pe0_b0_i = op_a2_i;
                     pe0_w0_i = op_b0_i;
 
-                    // PE2 Routing
-                    pe2_a2_i = op_a1_i;
-                    pe2_b2_i = op_a3_i;
-                    pe2_w1_i = op_b1_i; // Driven to 2^-1
+                    // PE0 Routing (Adjacent Elements: X0, X1)
+                    pe0_a0_i = op_a0_i;   // X0
+                    pe0_b0_i = op_a1_i;   // X1
+                    pe0_w0_i = op_b0_i;
+
+                    // PE2 Routing (Adjacent Elements: X2, X3)
+                    pe2_a2_i = op_a2_i;   // X2
+                    pe2_b2_i = op_a3_i;   // X3
+                    pe2_w1_i = op_b1_i;   // Driven to 2^-1
                     pe2_w2_i = op_b2_i;
 
                     // Direct Outputs

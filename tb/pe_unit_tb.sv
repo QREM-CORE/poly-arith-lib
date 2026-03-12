@@ -199,6 +199,22 @@ module pe_unit_tb();
             exp.z2 = mod_mul(mod_sub(pe3_u, pe1_u), b0);    // V0
             exp.z3 = mod_mul(mod_sub(pe3_v, pe1_v), b2);    // V2
         end
+        else if (mode == PE_MODE_INTT && mode_sel == 1'b1) begin
+            // ---------------------------------------------------
+            // INTT Radix-2 Mathematical Definition
+            // X0=a0, X1=a1, X2=a2, X3=a3
+            // w_A^-1=b0, 1665=b1, w_B^-1=b2, unused=b3
+            // U0 = (X0 + X1)/2
+            // V0 = (X0 - X1)w_A^-1
+            // U2 = (X2 + X3)2^-1
+            // V2 = (X2 - X3)w_B^-1
+            // ---------------------------------------------------
+
+            exp.z0 = mod_mul(mod_add(a0, a1), 1665);                // U0 (Hardcoded /2 in PE0)
+            exp.z1 = mod_mul(mod_sub(a0, a1), b0);                  // V0
+            exp.z2 = mod_mul(mod_add(a2, a3), b1);                  // U2 (Using b1 for /2)
+            exp.z3 = mod_mul(mod_sub(a2, a3), b2);                  // V2
+        end
 
         // 2. Push expected result to queue
         expected_queue.push_back(exp);
@@ -257,6 +273,9 @@ module pe_unit_tb();
                 else if (exp.mode == PE_MODE_INTT && exp.mode_sel == 1'b0) begin
                     if (z0_o !== exp.z0 || z1_o !== exp.z1 || z2_o !== exp.z2 || z3_o !== exp.z3) match = 1'b0;
                 end
+                else if (exp.mode == PE_MODE_INTT && exp.mode_sel == 1'b1) begin
+                    if (z0_o !== exp.z0 || z1_o !== exp.z1 || z2_o !== exp.z2 || z3_o !== exp.z3) match = 1'b0;
+                end
 
                 if (!match) begin
                     $display("==================================================");
@@ -283,6 +302,12 @@ module pe_unit_tb();
                         if (z0_o !== exp.z0) $display("   Z0 (U0) Mismatch! Exp: %0d, Got: %0d", exp.z0, z0_o);
                         if (z1_o !== exp.z1) $display("   Z1 (U2) Mismatch! Exp: %0d, Got: %0d", exp.z1, z1_o);
                         if (z2_o !== exp.z2) $display("   Z2 (V0) Mismatch! Exp: %0d, Got: %0d", exp.z2, z2_o);
+                        if (z3_o !== exp.z3) $display("   Z3 (V2) Mismatch! Exp: %0d, Got: %0d", exp.z3, z3_o);
+                    end
+                    else if (exp.mode == PE_MODE_INTT && exp.mode_sel == 1'b1) begin
+                        if (z0_o !== exp.z0) $display("   Z0 (U0) Mismatch! Exp: %0d, Got: %0d", exp.z0, z0_o);
+                        if (z1_o !== exp.z1) $display("   Z1 (V0) Mismatch! Exp: %0d, Got: %0d", exp.z1, z1_o);
+                        if (z2_o !== exp.z2) $display("   Z2 (U2) Mismatch! Exp: %0d, Got: %0d", exp.z2, z2_o);
                         if (z3_o !== exp.z3) $display("   Z3 (V2) Mismatch! Exp: %0d, Got: %0d", exp.z3, z3_o);
                     end
 
@@ -426,6 +451,32 @@ module pe_unit_tb();
                 rw2 = $urandom_range(0, 3328); rw1 = $urandom_range(0, 3328);
                 rw3 = $urandom_range(0, 3328); rw4 = $urandom_range(0, 3328);
                 drive_pipeline(rx0, rx1, rx2, rx3, rw2, rw1, rw3, rw4, PE_MODE_INTT, 1'b0, "INTT R4: Random Flow");
+            end
+        end
+        flush_pipeline();
+
+        // --------------------------------------------------
+        // Pipelined Stream: INTT Mode (Radix-2)
+        // op_a mapping: [X_0, X_1, X_2, X_3]
+        // op_b mapping: [w_A^-1, 1665, w_B^-1, unused]
+        // --------------------------------------------------
+        $display("--- Testing Streaming INTT Mode (Radix-2, 4-Cycle Latency) ---");
+
+        //                  X0  X1  X2  X3   wA' 1665 wB' d/c Mode          ModeSel Name
+        drive_pipeline(  0,  0,  0,  0,   0, 1665, 0, 0,  PE_MODE_INTT, 1'b1,   "INTT R2: All Zeros");
+        drive_pipeline(  1,  1,  1,  1,   1, 1665, 1, 0,  PE_MODE_INTT, 1'b1,   "INTT R2: All Ones");
+        drive_pipeline( 10, 20, 30, 40,   2, 1665, 3, 0,  PE_MODE_INTT, 1'b1,   "INTT R2: Simple Math");
+        drive_pipeline(100,  0,  0,  0,   0, 1665, 0, 0,  PE_MODE_INTT, 1'b1,   "INTT R2: X0 Only");
+        drive_pipeline(3328, 3328, 3328, 3328, 3328, 1665, 3328, 0, PE_MODE_INTT, 1'b1, "INTT R2: Max Stress");
+
+        begin
+            coeff_t rx0, rx1, rx2, rx3, rwA, rwB;
+            for (int i = 0; i < 20; i++) begin
+                rx0 = $urandom_range(0, 3328); rx1 = $urandom_range(0, 3328);
+                rx2 = $urandom_range(0, 3328); rx3 = $urandom_range(0, 3328);
+                rwA = $urandom_range(0, 3328); rwB = $urandom_range(0, 3328);
+                // Explicitly pinning b1 to 1665 (mod inverse of 2) for random vectors
+                drive_pipeline(rx0, rx1, rx2, rx3, rwA, 1665, rwB, 0, PE_MODE_INTT, 1'b1, "INTT R2: Random Flow");
             end
         end
         flush_pipeline();
