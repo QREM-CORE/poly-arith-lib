@@ -16,9 +16,9 @@ module pe_unit_tb();
     logic           clk;
     logic           rst;
 
-    logic           valid_i;
-    pe_mode_e       ctrl_i;
-    logic           mode_i; // 0 = Add/Radix-4, 1 = Sub/Radix-2
+    logic           valid_i = 0;
+    pe_mode_e       ctrl_i = PE_MODE_CWM; 
+    logic           mode_i = 0; // 0 = Add/Radix-4, 1 = Sub/Radix-2
 
     // Primary Operand Bus (A)
     coeff_t         op_a0_i, op_a1_i, op_a2_i, op_a3_i;
@@ -45,6 +45,7 @@ module pe_unit_tb();
         coeff_t     z2;
         coeff_t     z3;
         pe_mode_e   mode;
+        logic       mode_sel;
         string      name;
     } expected_result_t;
 
@@ -102,6 +103,7 @@ module pe_unit_tb();
         // Initialize with default 0s
         exp.z0 = 0; exp.z1 = 0; exp.z2 = 0; exp.z3 = 0;
         exp.mode = mode;
+        exp.mode_sel = mode_sel;
         exp.name = name;
 
         // =======================================================
@@ -128,7 +130,29 @@ module pe_unit_tb();
 
             // Z0 and Z3 are unused in CWM, we will ignore them in the monitor
         end
-        // TODO: Expand with 'else if (mode == PE_MODE_NTT)' later
+        else if (mode == PE_MODE_NTT && mode_sel == 1'b0) begin
+            // ---------------------------------------------------
+            // NTT Radix-4 Mathematical Definition
+            // X0=a0, X1=a1, X2=a2, X3=a3
+            // w_2=b0, w_1=b1, w_3=b2, w_4^1=b3
+            // U1 = (X0 + w_2*X2) + (X1*w_1 + X3*w_3)
+            // V1 = (X0 + w_2*X2) - (X1*w_1 + X3*w_3)
+            // U3 = (X0 - w_2*X2) + w_4^1*(X1*w_1 - X3*w_3)
+            // V3 = (X0 - w_2*X2) - w_4^1*(X1*w_1 - X3*w_3)
+            // ---------------------------------------------------
+
+            // Stage 1 (PE0 & PE2)
+            coeff_t pe0_u = mod_add(a0, mod_mul(a2, b0));
+            coeff_t pe0_v = mod_sub(a0, mod_mul(a2, b0));
+            coeff_t pe2_u = mod_add(mod_mul(a1, b1), mod_mul(a3, b2));
+            coeff_t pe2_v = mod_sub(mod_mul(a1, b1), mod_mul(a3, b2));
+
+            // Stage 2 (PE1 & PE3 mapped to Z outputs)
+            exp.z0 = mod_add(pe0_u, pe2_u);                         // U1
+            exp.z1 = mod_sub(pe0_u, pe2_u);                         // V1
+            exp.z2 = mod_add(pe0_v, mod_mul(pe2_v, b3));            // U3
+            exp.z3 = mod_sub(pe0_v, mod_mul(pe2_v, b3));            // V3
+        end
 
         // 2. Push expected result to queue
         expected_queue.push_back(exp);
@@ -178,16 +202,27 @@ module pe_unit_tb();
                 if (exp.mode == PE_MODE_CWM) begin
                     if (z1_o !== exp.z1 || z2_o !== exp.z2) match = 1'b0;
                 end
-                // TODO: Expand with 'else if (exp.mode == PE_MODE_NTT)' to check all 4 Z ports
+                else if (exp.mode == PE_MODE_NTT && exp.mode_sel == 1'b0) begin
+                    // Radix-4 NTT checks all 4 outputs
+                    if (z0_o !== exp.z0 || z1_o !== exp.z1 || z2_o !== exp.z2 || z3_o !== exp.z3) match = 1'b0;
+                end
 
                 if (!match) begin
                     $display("==================================================");
                     $display("[FAIL] %s", exp.name);
                     $display("Mode: %s", exp.mode.name());
+
                     if (exp.mode == PE_MODE_CWM) begin
                         if (z1_o !== exp.z1) $display("   Z1 (U3) Mismatch! Exp: %0d, Got: %0d", exp.z1, z1_o);
                         if (z2_o !== exp.z2) $display("   Z2 (V0) Mismatch! Exp: %0d, Got: %0d", exp.z2, z2_o);
                     end
+                    else if (exp.mode == PE_MODE_NTT && exp.mode_sel == 1'b0) begin
+                        if (z0_o !== exp.z0) $display("   Z0 (U1) Mismatch! Exp: %0d, Got: %0d", exp.z0, z0_o);
+                        if (z1_o !== exp.z1) $display("   Z1 (V1) Mismatch! Exp: %0d, Got: %0d", exp.z1, z1_o);
+                        if (z2_o !== exp.z2) $display("   Z2 (U3) Mismatch! Exp: %0d, Got: %0d", exp.z2, z2_o);
+                        if (z3_o !== exp.z3) $display("   Z3 (V3) Mismatch! Exp: %0d, Got: %0d", exp.z3, z3_o);
+                    end
+
                     $display("==================================================");
                     error_count++;
                 end else begin
@@ -251,7 +286,32 @@ module pe_unit_tb();
                 drive_pipeline(rf0, rf1, rg0, rg1, rw, 0, 0, 0, PE_MODE_CWM, 1'b0, "CWM: Random Flow");
             end
         end
+        flush_pipeline();
 
+        // --------------------------------------------------
+        // Pipelined Stream: NTT Mode (Radix-4)
+        // op_a mapping: [X_0, X_1, X_2, X_3]
+        // op_b mapping: [w_2, w_1, w_3, w_4^1]
+        // --------------------------------------------------
+        $display("--- Testing Streaming NTT Mode (Radix-4, 8-Cycle Latency) ---");
+
+        //              X0  X1  X2  X3   w2 w1 w3 w4^1 Mode          ModeSel Name
+        drive_pipeline(  0,  0,  0,  0,   0, 0, 0, 0,  PE_MODE_NTT,  1'b0,   "NTT R4: All Zeros");
+        drive_pipeline(  1,  1,  1,  1,   1, 1, 1, 1,  PE_MODE_NTT,  1'b0,   "NTT R4: All Ones");
+        drive_pipeline( 10, 20, 30, 40,   2, 3, 4, 5,  PE_MODE_NTT,  1'b0,   "NTT R4: Simple Math");
+        drive_pipeline(100,  0,  0,  0,   0, 0, 0, 0,  PE_MODE_NTT,  1'b0,   "NTT R4: X0 Only");
+        drive_pipeline(3328, 3328, 3328, 3328, 3328, 3328, 3328, 3328, PE_MODE_NTT, 1'b0, "NTT R4: Max Stress");
+
+        begin
+            coeff_t rx0, rx1, rx2, rx3, rw2, rw1, rw3, rw4;
+            for (int i = 0; i < 20; i++) begin
+                rx0 = $urandom_range(0, 3328); rx1 = $urandom_range(0, 3328);
+                rx2 = $urandom_range(0, 3328); rx3 = $urandom_range(0, 3328);
+                rw2 = $urandom_range(0, 3328); rw1 = $urandom_range(0, 3328);
+                rw3 = $urandom_range(0, 3328); rw4 = $urandom_range(0, 3328);
+                drive_pipeline(rx0, rx1, rx2, rx3, rw2, rw1, rw3, rw4, PE_MODE_NTT, 1'b0, "NTT R4: Random Flow");
+            end
+        end
         flush_pipeline();
 
         // Final Summary
