@@ -504,15 +504,16 @@ module pe_unit (
                 pe0_a0_i = op_a0_i;
                 pe0_b0_i = op_b0_i;
 
-                // CE1 Routing (Follows Table 1 mapping X2/Y2)
-                pe1_a1_i = op_a2_i;
-                pe1_b1_i = op_b2_i;
+                // Note: Swapped CE1 and CE2 inputs for +/- from Table 1 Inha
+                // CE1 Routing (Straight 1-to-1 Mapping)
+                pe1_a1_i = op_a1_i;
+                pe1_b1_i = op_b1_i;
 
-                // CE2 Routing (Follows Table 1 mapping X1/Y1)
-                pe2_a2_i = op_a1_i;
-                pe2_b2_i = op_b1_i;
+                // CE2 Routing (Straight 1-to-1 Mapping)
+                pe2_a2_i = op_a2_i;
+                pe2_b2_i = op_b2_i;
 
-                // CE3 Routing (Follows Table 1 mapping X3/Y3)
+                // CE3 Routing (Straight 1-to-1 Mapping)
                 pe3_a3_i = op_a3_i;
                 pe3_b3_i = op_b3_i;
 

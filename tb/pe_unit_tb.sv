@@ -215,6 +215,26 @@ module pe_unit_tb();
             exp.z2 = mod_mul(mod_add(a2, a3), b1);                  // U2 (Using b1 for /2)
             exp.z3 = mod_mul(mod_sub(a2, a3), b2);                  // V2
         end
+        else if (mode == PE_MODE_ADDSUB && mode_sel == 1'b0) begin
+            // ---------------------------------------------------
+            // ADDSUB Mathematical Definition (Addition)
+            // Z = X + Y (1-to-1 straight mapping)
+            // ---------------------------------------------------
+            exp.z0 = mod_add(a0, b0);
+            exp.z1 = mod_add(a1, b1);
+            exp.z2 = mod_add(a2, b2);
+            exp.z3 = mod_add(a3, b3);
+        end
+        else if (mode == PE_MODE_ADDSUB && mode_sel == 1'b1) begin
+            // ---------------------------------------------------
+            // ADDSUB Mathematical Definition (Subtraction)
+            // Z = X - Y (1-to-1 straight mapping)
+            // ---------------------------------------------------
+            exp.z0 = mod_sub(a0, b0);
+            exp.z1 = mod_sub(a1, b1);
+            exp.z2 = mod_sub(a2, b2);
+            exp.z3 = mod_sub(a3, b3);
+        end
 
         // 2. Push expected result to queue
         expected_queue.push_back(exp);
@@ -264,16 +284,8 @@ module pe_unit_tb();
                 if (exp.mode == PE_MODE_CWM) begin
                     if (z1_o !== exp.z1 || z2_o !== exp.z2) match = 1'b0;
                 end
-                else if (exp.mode == PE_MODE_NTT && exp.mode_sel == 1'b0) begin
-                    if (z0_o !== exp.z0 || z1_o !== exp.z1 || z2_o !== exp.z2 || z3_o !== exp.z3) match = 1'b0;
-                end
-                else if (exp.mode == PE_MODE_NTT && exp.mode_sel == 1'b1) begin
-                    if (z0_o !== exp.z0 || z1_o !== exp.z1 || z2_o !== exp.z2 || z3_o !== exp.z3) match = 1'b0;
-                end
-                else if (exp.mode == PE_MODE_INTT && exp.mode_sel == 1'b0) begin
-                    if (z0_o !== exp.z0 || z1_o !== exp.z1 || z2_o !== exp.z2 || z3_o !== exp.z3) match = 1'b0;
-                end
-                else if (exp.mode == PE_MODE_INTT && exp.mode_sel == 1'b1) begin
+                else if (exp.mode == PE_MODE_NTT || exp.mode == PE_MODE_INTT || exp.mode == PE_MODE_ADDSUB) begin
+                    // NTT, INTT, and ADDSUB check all 4 outputs
                     if (z0_o !== exp.z0 || z1_o !== exp.z1 || z2_o !== exp.z2 || z3_o !== exp.z3) match = 1'b0;
                 end
 
@@ -282,34 +294,11 @@ module pe_unit_tb();
                     $display("[FAIL] %s", exp.name);
                     $display("Mode: %s", exp.mode.name());
 
-                    if (exp.mode == PE_MODE_CWM) begin
-                        if (z1_o !== exp.z1) $display("   Z1 (U3) Mismatch! Exp: %0d, Got: %0d", exp.z1, z1_o);
-                        if (z2_o !== exp.z2) $display("   Z2 (V0) Mismatch! Exp: %0d, Got: %0d", exp.z2, z2_o);
-                    end
-                    else if (exp.mode == PE_MODE_NTT && exp.mode_sel == 1'b0) begin
-                        if (z0_o !== exp.z0) $display("   Z0 (U1) Mismatch! Exp: %0d, Got: %0d", exp.z0, z0_o);
-                        if (z1_o !== exp.z1) $display("   Z1 (V1) Mismatch! Exp: %0d, Got: %0d", exp.z1, z1_o);
-                        if (z2_o !== exp.z2) $display("   Z2 (U3) Mismatch! Exp: %0d, Got: %0d", exp.z2, z2_o);
-                        if (z3_o !== exp.z3) $display("   Z3 (V3) Mismatch! Exp: %0d, Got: %0d", exp.z3, z3_o);
-                    end
-                    else if (exp.mode == PE_MODE_NTT && exp.mode_sel == 1'b1) begin
-                        if (z0_o !== exp.z0) $display("   Z0 (U0) Mismatch! Exp: %0d, Got: %0d", exp.z0, z0_o);
-                        if (z1_o !== exp.z1) $display("   Z1 (V0) Mismatch! Exp: %0d, Got: %0d", exp.z1, z1_o);
-                        if (z2_o !== exp.z2) $display("   Z2 (U2) Mismatch! Exp: %0d, Got: %0d", exp.z2, z2_o);
-                        if (z3_o !== exp.z3) $display("   Z3 (V2) Mismatch! Exp: %0d, Got: %0d", exp.z3, z3_o);
-                    end
-                    else if (exp.mode == PE_MODE_INTT && exp.mode_sel == 1'b0) begin
-                        if (z0_o !== exp.z0) $display("   Z0 (U0) Mismatch! Exp: %0d, Got: %0d", exp.z0, z0_o);
-                        if (z1_o !== exp.z1) $display("   Z1 (U2) Mismatch! Exp: %0d, Got: %0d", exp.z1, z1_o);
-                        if (z2_o !== exp.z2) $display("   Z2 (V0) Mismatch! Exp: %0d, Got: %0d", exp.z2, z2_o);
-                        if (z3_o !== exp.z3) $display("   Z3 (V2) Mismatch! Exp: %0d, Got: %0d", exp.z3, z3_o);
-                    end
-                    else if (exp.mode == PE_MODE_INTT && exp.mode_sel == 1'b1) begin
-                        if (z0_o !== exp.z0) $display("   Z0 (U0) Mismatch! Exp: %0d, Got: %0d", exp.z0, z0_o);
-                        if (z1_o !== exp.z1) $display("   Z1 (V0) Mismatch! Exp: %0d, Got: %0d", exp.z1, z1_o);
-                        if (z2_o !== exp.z2) $display("   Z2 (U2) Mismatch! Exp: %0d, Got: %0d", exp.z2, z2_o);
-                        if (z3_o !== exp.z3) $display("   Z3 (V2) Mismatch! Exp: %0d, Got: %0d", exp.z3, z3_o);
-                    end
+                    // CWM only evaluates Z1 and Z2. All other modes evaluate all 4 ports.
+                    if (exp.mode != PE_MODE_CWM && z0_o !== exp.z0) $display("   Z0 Mismatch! Exp: %0d, Got: %0d", exp.z0, z0_o);
+                    if (z1_o !== exp.z1)                            $display("   Z1 Mismatch! Exp: %0d, Got: %0d", exp.z1, z1_o);
+                    if (z2_o !== exp.z2)                            $display("   Z2 Mismatch! Exp: %0d, Got: %0d", exp.z2, z2_o);
+                    if (exp.mode != PE_MODE_CWM && z3_o !== exp.z3) $display("   Z3 Mismatch! Exp: %0d, Got: %0d", exp.z3, z3_o);
 
                     $display("==================================================");
                     error_count++;
@@ -477,6 +466,53 @@ module pe_unit_tb();
                 rwA = $urandom_range(0, 3328); rwB = $urandom_range(0, 3328);
                 // Explicitly pinning b1 to 1665 (mod inverse of 2) for random vectors
                 drive_pipeline(rx0, rx1, rx2, rx3, rwA, 1665, rwB, 0, PE_MODE_INTT, 1'b1, "INTT R2: Random Flow");
+            end
+        end
+        flush_pipeline();
+
+        // --------------------------------------------------
+        // Pipelined Stream: ADDSUB Mode
+        // op_a mapping: [X_0, X_1, X_2, X_3]
+        // op_b mapping: [Y_0, Y_1, Y_2, Y_3]
+        // --------------------------------------------------
+        $display("--- Testing Streaming ADDSUB Mode (ADD, 1-Cycle Latency) ---");
+
+        // -----------------------------------------
+        // 1. ADDITION BLOCK (mode_i = 0)
+        // -----------------------------------------
+        //              X0  X1  X2  X3   Y0 Y1 Y2 Y3       Mode            ModeSel Name
+        drive_pipeline(  0,  0,  0,  0,   0, 0, 0, 0,      PE_MODE_ADDSUB, 1'b0,   "ADD: All Zeros");
+        drive_pipeline( 10, 20, 30, 40,   5, 5, 5, 5,      PE_MODE_ADDSUB, 1'b0,   "ADD: Simple Math");
+        drive_pipeline(3328, 3328, 3328, 3328, 1, 1, 1, 1, PE_MODE_ADDSUB, 1'b0,   "ADD: Modulo Wrap");
+
+        begin
+            coeff_t rx0, rx1, rx2, rx3, ry0, ry1, ry2, ry3;
+            for (int i = 0; i < 20; i++) begin
+                rx0 = $urandom_range(0, 3328); rx1 = $urandom_range(0, 3328);
+                rx2 = $urandom_range(0, 3328); rx3 = $urandom_range(0, 3328);
+                ry0 = $urandom_range(0, 3328); ry1 = $urandom_range(0, 3328);
+                ry2 = $urandom_range(0, 3328); ry3 = $urandom_range(0, 3328);
+                drive_pipeline(rx0, rx1, rx2, rx3, ry0, ry1, ry2, ry3, PE_MODE_ADDSUB, 1'b0, "ADD: Random Flow");
+            end
+        end
+        flush_pipeline(); // MUST FLUSH BEFORE SWITCHING MODE_I TO SUBTRACTION!
+
+        $display("--- Testing Streaming ADDSUB Mode (SUB, 1-Cycle Latency) ---");
+        // -----------------------------------------
+        // 2. SUBTRACTION BLOCK (mode_i = 1)
+        // -----------------------------------------
+        //              X0  X1  X2  X3   Y0 Y1 Y2 Y3       Mode            ModeSel Name
+        drive_pipeline( 10, 20, 30, 40,   5, 5, 5, 5,      PE_MODE_ADDSUB, 1'b1,   "SUB: Simple Math");
+        drive_pipeline(  0,  0,  0,  0,   1, 1, 1, 1,      PE_MODE_ADDSUB, 1'b1,   "SUB: Modulo Wrap (0-1)");
+
+        begin
+            coeff_t rx0, rx1, rx2, rx3, ry0, ry1, ry2, ry3;
+            for (int i = 0; i < 20; i++) begin
+                rx0 = $urandom_range(0, 3328); rx1 = $urandom_range(0, 3328);
+                rx2 = $urandom_range(0, 3328); rx3 = $urandom_range(0, 3328);
+                ry0 = $urandom_range(0, 3328); ry1 = $urandom_range(0, 3328);
+                ry2 = $urandom_range(0, 3328); ry3 = $urandom_range(0, 3328);
+                drive_pipeline(rx0, rx1, rx2, rx3, ry0, ry1, ry2, ry3, PE_MODE_ADDSUB, 1'b1, "SUB: Random Flow");
             end
         end
         flush_pipeline();
