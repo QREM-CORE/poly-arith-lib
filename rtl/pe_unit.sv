@@ -10,8 +10,45 @@
  * doi: 10.1109/OJCAS.2025.3591136. (Inha University)
  *
  * Description:
- * Top-level wrapper for the Unified Polynomial Arithmetic Module.
- * Routes incoming data to PE0, PE1, PE2, and PE3 depending on the operational mode.
+ * Top-level wrapper for the Processing Elements.
+ * Includes pipeline synchronization delays for cascaded Twiddle Factors
+ * and Output Latency alignment.
+ *
+ * ==============================================================================
+ * PE_UNIT USER GUIDE (I/O MAPPING)
+ * ==============================================================================
+ * This module dynamically reconfigures its 8-port input interface based on the
+ * active ctrl_i state. The top-level Memory Controller/AGU MUST drive the op_a
+ * and op_b buses according to the tables below.
+ * 1. CWM (Coordinate-Wise Multiplication) -> mode_i = Don't Care
+ * op_a = [f_2i, f_2i+1, g_2i, g_2i+1]
+ * op_b = [omega, d/c, d/c, d/c]
+ * Outputs: z1_o = U3, z2_o = V0 (z0/z3 are unused)
+ * 2. NTT (Number Theoretic Transform) -> mode_i = 0 (Radix-4)
+ * op_a = [X_0, X_1, X_2, X_3]
+ * op_b = [w_2, w_1, w_3, w_4^1]
+ * Outputs: z0_o = U1, z1_o = V1, z2_o = U3, z3_o = V3
+ * 3. NTT (Number Theoretic Transform) -> mode_i = 1 (Radix-2)
+ * op_a = [X_0, X_1, X_2, X_3]
+ * op_b = [w_A, 12'd1, w_B, d/c] -> **NOTE: op_b1_i MUST be exactly 1**
+ * Outputs: z0_o = U0, z1_o = V0, z2_o = U2, z3_o = V2
+ * 4. INTT (Inverse NTT) -> mode_i = 0 (Radix-4)
+ * op_a = [X_0, X_1, X_2, X_3]
+ * op_b = [w_2^-1, w_1^-1, w_3^-1, w_4^-1]
+ * Outputs: z0_o = U0, z1_o = U2, z2_o = V0, z3_o = V2
+ * 5. INTT (Inverse NTT) -> mode_i = 1 (Radix-2)
+ * op_a = [X_0, X_1, X_2, X_3]
+ * op_b = [w_A^-1, 12'd1665, w_B^-1, d/c] -> **NOTE: op_b1_i MUST be 1665 (2^-1)**
+ * Outputs: z0_o = U0, z1_o = V0, z2_o = U2, z3_o = V2
+ * 6. ADDSUB (Point-wise Addition/Subtraction) -> mode_i = 0 (Add), 1 (Sub)
+ * op_a = [X_0, X_1, X_2, X_3]
+ * op_b = [Y_0, Y_1, Y_2, Y_3]
+ * Outputs: Z maps directly to the requested U (Add) or V (Sub) results.
+ * 7. COMP / DECOMP -> mode_i = Don't Care
+ * op_a = [X_0, X_1, X_2, X_3]
+ * op_b = [m/q, m/q, m/q, m/q]
+ * Outputs: z0_o = V0, z1_o = U2, z2_o = V2, z3_o = V3
+ * ==============================================================================
  */
 
 import poly_arith_pkg::*;
@@ -23,25 +60,37 @@ module pe_unit (
     input   logic           valid_i,
     input   pe_mode_e       ctrl_i,
 
-    // Data Operand A (X, f)
-    input   coeff_t         x0_i,
-    input   coeff_t         x1_i,
-    input   coeff_t         x2_i,
-    input   coeff_t         x3_i,
+    // 0 = Add (U), 1 = Sub (V) for ADD/SUB ctrl
+    // 0 = Radix 4, 1 = Radix 2 for NTT/INTT
+    input   logic           mode_i,
 
-    // Data Operand B (Y, g)
-    input   coeff_t         y0_i,
-    input   coeff_t         y1_i,
-    input   coeff_t         y2_i,
-    input   coeff_t         y3_i,
+    // ==========================================
+    // Primary Operand Bus (Fed by SRAM Bank A)
+    // ==========================================
+    // Mappings:
+    // - NTT/INTT/COMP/DECOMP : X_0, X_1, X_2, X_3
+    // - ADDSUB               : X_0, X_1, X_2, X_3
+    // - CWM                  : f_2i, f_2i+1, g_2i, g_2i+1
+    input   coeff_t         op_a0_i,
+    input   coeff_t         op_a1_i,
+    input   coeff_t         op_a2_i,
+    input   coeff_t         op_a3_i,
 
-    // Constants & Twiddle Factors (omega, m/q, 2^-1)
-    input   coeff_t         w0_i,
-    input   coeff_t         w1_i,
-    input   coeff_t         w2_i,
-    input   coeff_t         w3_i,
+    // ==========================================
+    // Secondary Operand Bus (Fed by SRAM Bank B OR Twiddle ROM)
+    // ==========================================
+    // Mappings:
+    // - NTT/INTT/COMP/DECOMP : w_2, w_1, w_3, w_4 (Twiddles / Constants)
+    // - ADDSUB               : Y_0, Y_1, Y_2, Y_3 (Secondary Polynomial)
+    // - CWM                  : omega, Unused, Unused, Unused
+    input   coeff_t         op_b0_i,
+    input   coeff_t         op_b1_i,
+    input   coeff_t         op_b2_i,
+    input   coeff_t         op_b3_i,
 
+    // ==========================================
     // Outputs
+    // ==========================================
     output  coeff_t         z0_o,
     output  coeff_t         z1_o,
     output  coeff_t         z2_o,
@@ -77,6 +126,53 @@ module pe_unit (
     coeff_t     pe3_u3_o, pe3_v3_o;
     pe_mode_e   pe3_ctrl_i;
     logic       pe3_valid_i, pe3_valid_o;
+
+    // =========================================================================
+    // Pipeline Synchronization Delays
+    // =========================================================================
+
+    // -------- Twiddle Factor Input Delays --------
+    coeff_t op_b0_d3, op_b0_d4;
+    coeff_t op_b1_d4;
+    coeff_t op_b2_d4;
+    coeff_t op_b3_d4;
+
+    // op_b0 delays (Needs 3-cycle tap for CWM, 4-cycle tap for INTT)
+    delay_n #(.DWIDTH(12), .DEPTH(3)) u_delay_b0_3 (
+        .clk(clk), .rst(rst), .data_i(op_b0_i), .data_o(op_b0_d3)
+    );
+    delay_n #(.DWIDTH(12), .DEPTH(1)) u_delay_b0_4 (
+        .clk(clk), .rst(rst), .data_i(op_b0_d3), .data_o(op_b0_d4) // Chained
+    );
+
+    // op_b1 delay (4-cycle for INTT)
+    delay_n #(.DWIDTH(12), .DEPTH(4)) u_delay_b1_4 (
+        .clk(clk), .rst(rst), .data_i(op_b1_i), .data_o(op_b1_d4)
+    );
+
+    // op_b2 delay (4-cycle for INTT)
+    delay_n #(.DWIDTH(12), .DEPTH(4)) u_delay_b2_4 (
+        .clk(clk), .rst(rst), .data_i(op_b2_i), .data_o(op_b2_d4)
+    );
+
+    // op_b3 delay (4-cycle for NTT)
+    delay_n #(.DWIDTH(12), .DEPTH(4)) u_delay_b3_4 (
+        .clk(clk), .rst(rst), .data_i(op_b3_i), .data_o(op_b3_d4)
+    );
+
+    // -------- CWM Output Alignment Delays --------
+    // In CWM, the PE3 path finishes 1 cycle earlier than the PE0 path.
+    // These delays align the PE3 output to match the 8-cycle latency.
+    coeff_t pe3_u3_o_d1;
+    logic   pe3_valid_o_d1;
+
+    delay_n #(.DWIDTH(12), .DEPTH(1)) u_delay_pe3_u3_out (
+        .clk(clk), .rst(rst), .data_i(pe3_u3_o), .data_o(pe3_u3_o_d1)
+    );
+
+    delay_n #(.DWIDTH(1), .DEPTH(1)) u_delay_pe3_valid_out (
+        .clk(clk), .rst(rst), .data_i(pe3_valid_o), .data_o(pe3_valid_o_d1)
+    );
 
     // =========================================================================
     // Processing Element (PE) Instantiations
@@ -144,7 +240,8 @@ module pe_unit (
     );
 
     // =========================================================================
-    // Processing Element (PE) Routing (from Table 1 of Inha Paper)
+    // Processing Element (PE) Routing (Optimized 8-Port Interface)
+    // Reference: Table 1 (Inha University UniPAM Architecture)
     // =========================================================================
 
     always_comb begin
@@ -155,20 +252,32 @@ module pe_unit (
         pe3_a3_i = '0; pe3_b3_i = '0; pe3_w3_i = '0; pe3_tf_omega_4_i = '0;
         z0_o = '0; z1_o = '0; z2_o = '0; z3_o = '0;
 
-        // Default Control & Valid propagation
+        // Default Control propagation
         pe0_ctrl_i = ctrl_i; pe1_ctrl_i = ctrl_i;
         pe2_ctrl_i = ctrl_i; pe3_ctrl_i = ctrl_i;
 
-        pe0_valid_i = valid_i; pe1_valid_i = valid_i;
-        pe2_valid_i = valid_i; pe3_valid_i = valid_i;
-        valid_o = pe0_valid_o; // Standardize valid_o to PE0's output
+        // Default Valid propagation to prevent latches
+        pe0_valid_i = 1'b0; pe1_valid_i = 1'b0;
+        pe2_valid_i = 1'b0; pe3_valid_i = 1'b0;
+        valid_o = 1'b0;
 
         case(ctrl_i)
             PE_MODE_CWM : begin
-                // External Mapping assumption for CWM:
-                // x0 = f_2i, x1 = f_2i+1
-                // y0 = g_2i, y1 = g_2i+1
-                // w0 = omega (w)
+                // ---------------------------------------------------------
+                // External Mapping for CWM (5 Inputs Used):
+                // op_a0_i = f_2i        op_b0_i = omega (w)
+                // op_a1_i = f_2i+1      op_b1_i = Unused
+                // op_a2_i = g_2i        op_b2_i = Unused
+                // op_a3_i = g_2i+1      op_b3_i = Unused
+                // ---------------------------------------------------------
+
+                // STAGE 1: PE1 and PE2 receive fresh inputs
+                pe1_valid_i = valid_i;
+                pe2_valid_i = valid_i;
+
+                // STAGE 2: PE0 and PE3 receive valid cascades
+                pe0_valid_i = pe1_valid_o & pe2_valid_m_o; // M matches U1/V1
+                pe3_valid_i = pe2_valid_o;                 // Driven by U2/V2
 
                 // CE0 Routing (Feedback Heavy)
                 pe0_a0_i = pe2_m_o;   // M
@@ -176,165 +285,297 @@ module pe_unit (
                 pe0_w0_i = pe1_v1_o;  // V1
 
                 // CE1 Routing
-                pe1_a1_i = y0_i;      // g_2i
-                pe1_b1_i = x1_i;      // f_2i+1
-                // NOTE: Swapped c0 and c1 inputs for assumed table error
-                pe1_c0_i = x0_i;      // f_2i
-                pe1_c1_i = y1_i;      // g_2i+1
+                pe1_a1_i = op_a2_i;   // g_2i
+                pe1_b1_i = op_a1_i;   // f_2i+1
+                // NOTE: Swapped c0 and c1 inputs to fix theoretical CWM routing
+                pe1_c0_i = op_a0_i;   // f_2i
+                pe1_c1_i = op_a3_i;   // g_2i+1
 
                 // CE2 Routing
-                pe2_a2_i = x0_i;      // f_2i
-                pe2_b2_i = y1_i;      // g_2i+1
-                pe2_w1_i = y0_i;      // g_2i
-                pe2_w2_i = x1_i;      // f_2i+1
+                pe2_a2_i = op_a0_i;   // f_2i
+                pe2_b2_i = op_a3_i;   // g_2i+1
+                pe2_w1_i = op_a2_i;   // g_2i
+                pe2_w2_i = op_a1_i;   // f_2i+1
 
                 // CE3 Routing
                 pe3_a3_i = pe2_u2_o;  // U2
                 pe3_b3_i = pe2_v2_o;  // V2
-                pe3_w3_i = w0_i;      // omega
+                pe3_w3_i = op_b0_d3;  // omega (SYNCHRONIZED: 3-Cycle Delay)
 
                 // Outputs
-                z1_o = pe3_u3_o;      // U3
+                z1_o = pe3_u3_o_d1;   // U3 (SYNCHRONIZED: 1-Cycle Delay to match PE0)
                 z2_o = pe0_v0_o;      // V0
+                valid_o = pe0_valid_o & pe3_valid_o_d1; // Perfectly aligned to 8 CCs
             end
 
             PE_MODE_NTT : begin
-                // External Mapping assumption for NTT:
-                // x0 = X_0, x1 = X_1, x2 = X_2, x3 = X_3
-                // w0 = w_2, w1 = w_1, w2 = w_3, w3 = w_4^1
+                if (mode_i == 1'b0) begin
+                    // =========================================================
+                    // RADIX-4 NTT MODE (Cascaded PEs)
+                    // =========================================================
 
-                // CE0 Routing
-                pe0_a0_i = x0_i;
-                pe0_b0_i = x2_i;
-                pe0_w0_i = w0_i;      // w_2
+                    // ---------------------------------------------------------
+                    // External Mapping for RADIX-4 NTT (8 Inputs Used):
+                    // op_a0_i = X_0         op_b0_i = w_2
+                    // op_a1_i = X_1         op_b1_i = w_1
+                    // op_a2_i = X_2         op_b2_i = w_3
+                    // op_a3_i = X_3         op_b3_i = w_4^1 (or single omega)
+                    // ---------------------------------------------------------
 
-                // CE1 Routing (Cross-PE Feedback)
-                pe1_a1_i = pe0_u0_o;  // U0
-                pe1_b1_i = pe2_u2_o;  // U2
+                    // STAGE 1: PE0 and PE2 receive fresh inputs
+                    pe0_valid_i = valid_i;
+                    pe2_valid_i = valid_i;
 
-                // CE2 Routing
-                pe2_a2_i = x1_i;
-                pe2_b2_i = x3_i;
-                pe2_w1_i = w1_i;      // w_1
-                pe2_w2_i = w2_i;      // w_3
+                    // STAGE 2: PE1 and PE3 receive valid cascades
+                    pe1_valid_i = pe0_valid_o & pe2_valid_o;
+                    pe3_valid_i = pe0_valid_o & pe2_valid_o;
 
-                // CE3 Routing (Cross-PE Feedback)
-                pe3_a3_i = pe0_v0_o;  // V0
-                pe3_b3_i = pe2_v2_o;  // V2
-                pe3_tf_omega_4_i = w3_i; // w_4^1
+                    // CE0 Routing
+                    pe0_a0_i = op_a0_i;   // X_0
+                    pe0_b0_i = op_a2_i;   // X_2
+                    pe0_w0_i = op_b0_i;   // w_2 (No delay, Stage 1)
 
-                // Outputs
-                z0_o = pe1_u1_o;      // U1
-                z1_o = pe1_v1_o;      // V1
-                z2_o = pe3_u3_o;      // U3
-                z3_o = pe3_v3_o;      // V3
+                    // CE1 Routing (Cross-PE Feedback)
+                    pe1_a1_i = pe0_u0_o;  // U0
+                    pe1_b1_i = pe2_u2_o;  // U2
+
+                    // CE2 Routing
+                    pe2_a2_i = op_a1_i;   // X_1
+                    pe2_b2_i = op_a3_i;   // X_3
+                    pe2_w1_i = op_b1_i;   // w_1 (No delay, Stage 1)
+                    pe2_w2_i = op_b2_i;   // w_3 (No delay, Stage 1)
+
+                    // CE3 Routing (Cross-PE Feedback)
+                    pe3_a3_i = pe0_v0_o;  // V0
+                    pe3_b3_i = pe2_v2_o;  // V2
+                    pe3_tf_omega_4_i = op_b3_d4; // w_4^1 (SYNCHRONIZED: 4-Cycle Delay)
+
+                    // Outputs
+                    z0_o = pe1_u1_o;      // U1
+                    z1_o = pe1_v1_o;      // V1
+                    z2_o = pe3_u3_o;      // U3
+                    z3_o = pe3_v3_o;      // V3
+                    valid_o = pe1_valid_o & pe3_valid_o;
+                end else begin
+                    // =========================================================
+                    // RADIX-2 NTT MODE (Bypasses PE1/PE3 completely)
+                    // Uses PE0 and PE2 in parallel for two separate butterflies.
+                    // =========================================================
+
+                    // ---------------------------------------------------------
+                    // External Mapping for RADIX-2 NTT (7 Inputs Used):
+                    // op_a0_i = X_0         op_b0_i = omega_A (PE0 Twiddle)
+                    // op_a1_i = X_1         op_b1_i = 12'd1   (PE2 Bypass Multiplier)
+                    // op_a2_i = X_2         op_b2_i = omega_B (PE2 Twiddle)
+                    // op_a3_i = X_3         op_b3_i = Unused
+                    //
+                    // CRITICAL NOTE: op_b1_i MUST be driven to 1. PE2 computes
+                    // A*W1 + B*W2. Setting W1 to 1 turns it into a standard butterfly.
+                    // ---------------------------------------------------------
+
+                    pe0_valid_i = valid_i;
+                    pe2_valid_i = valid_i;
+
+                    // PE0 Routing
+                    pe0_a0_i = op_a0_i;
+                    pe0_b0_i = op_a2_i;
+                    pe0_w0_i = op_b0_i;
+
+                    // PE2 Routing
+                    pe2_a2_i = op_a1_i;
+                    pe2_b2_i = op_a3_i;
+                    pe2_w1_i = op_b1_i; // Driven to 1
+                    pe2_w2_i = op_b2_i;
+
+                    // Direct Outputs
+                    z0_o = pe0_u0_o;
+                    z1_o = pe0_v0_o;
+                    z2_o = pe2_u2_o;
+                    z3_o = pe2_v2_o;
+                    valid_o = pe0_valid_o & pe2_valid_o;
+                end
             end
 
             PE_MODE_INTT : begin
-                // External Mapping assumption for INTT:
-                // x0 = X_0, x1 = X_1, x2 = X_2, x3 = X_3
-                // w0 = w_2^-1, w1 = w_1^-1, w2 = w_3^-1, w3 = w_4^-1
+                if (mode_i == 1'b0) begin
+                    // =========================================================
+                    // RADIX-4 INTT MODE (Cascaded PEs)
+                    // =========================================================
 
-                // CE0 Routing (Cross-PE Feedback)
-                pe0_a0_i = pe3_u3_o;  // U3
-                pe0_b0_i = pe1_u1_o;  // U1
-                pe0_w0_i = w0_i;      // w_2^-1
+                    // ---------------------------------------------------------
+                    // External Mapping for RADIX-4 INTT (8 Inputs Used):
+                    // op_a0_i = X_0         op_b0_i = w_2^-1
+                    // op_a1_i = X_1         op_b1_i = w_1^-1
+                    // op_a2_i = X_2         op_b2_i = w_3^-1
+                    // op_a3_i = X_3         op_b3_i = w_4^-1 (or single inv)
+                    // ---------------------------------------------------------
 
-                // CE1 Routing
-                pe1_a1_i = x2_i;
-                pe1_b1_i = x3_i;
+                    // STAGE 1: PE1 and PE3 receive fresh inputs
+                    pe1_valid_i = valid_i;
+                    pe3_valid_i = valid_i;
 
-                // CE2 Routing (Cross-PE Feedback)
-                pe2_a2_i = pe3_v3_o;  // V3
-                pe2_b2_i = pe1_v1_o;  // V1
-                pe2_w1_i = w1_i;      // w_1^-1
-                pe2_w2_i = w2_i;      // w_3^-1
+                    // STAGE 2: PE0 and PE2 receive valid cascades
+                    pe0_valid_i = pe1_valid_o & pe3_valid_o;
+                    pe2_valid_i = pe1_valid_o & pe3_valid_o;
 
-                // CE3 Routing
-                pe3_a3_i = x0_i;
-                pe3_b3_i = x1_i;
-                pe3_tf_omega_4_i = w3_i; // w_4^-1
+                    // CE0 Routing (Cross-PE Feedback)
+                    pe0_a0_i = pe3_u3_o;  // U3
+                    pe0_b0_i = pe1_u1_o;  // U1
+                    pe0_w0_i = op_b0_d4;  // w_2^-1 (SYNCHRONIZED: 4-Cycle Delay)
 
-                // Outputs
-                z0_o = pe0_u0_o;      // U0
-                z1_o = pe2_u2_o;      // U2
-                z2_o = pe0_v0_o;      // V0
-                z3_o = pe2_v2_o;      // V2
+                    // CE1 Routing
+                    pe1_a1_i = op_a2_i;   // X_2
+                    pe1_b1_i = op_a3_i;   // X_3
+
+                    // CE2 Routing (Cross-PE Feedback)
+                    pe2_a2_i = pe3_v3_o;  // V3
+                    pe2_b2_i = pe1_v1_o;  // V1
+                    pe2_w1_i = op_b1_d4;  // w_1^-1 (SYNCHRONIZED: 4-Cycle Delay)
+                    pe2_w2_i = op_b2_d4;  // w_3^-1 (SYNCHRONIZED: 4-Cycle Delay)
+
+                    // CE3 Routing
+                    pe3_a3_i = op_a0_i;   // X_0
+                    pe3_b3_i = op_a1_i;   // X_1
+                    pe3_tf_omega_4_i = op_b3_i; // w_4^-1 (No delay, Stage 1)
+
+                    // Outputs
+                    z0_o = pe0_u0_o;      // U0
+                    z1_o = pe2_u2_o;      // U2
+                    z2_o = pe0_v0_o;      // V0
+                    z3_o = pe2_v2_o;      // V2
+                    valid_o = pe0_valid_o & pe2_valid_o;
+                end else begin
+                    // =========================================================
+                    // RADIX-2 INTT MODE (Bypasses PE1/PE3 completely)
+                    // Uses PE0 and PE2 in parallel for two separate butterflies.
+                    // =========================================================
+
+                    // ---------------------------------------------------------
+                    // External Mapping for RADIX-2 INTT (7 Inputs Used):
+                    // op_a0_i = X_0         op_b0_i = omega_A^-1 (PE0 Twiddle)
+                    // op_a1_i = X_1         op_b1_i = 12'd1665   (PE2 Div-by-2 Constant)
+                    // op_a2_i = X_2         op_b2_i = omega_B^-1 (PE2 Twiddle)
+                    // op_a3_i = X_3         op_b3_i = Unused
+                    //
+                    // CRITICAL NOTE: op_b1_i MUST be driven to 1665 (which is the
+                    // modulo 3329 inverse of 2). PE2 computes (A+B)*W1. Setting
+                    // W1 to 1665 performs the required (A+B)/2 division for INTT.
+                    // ---------------------------------------------------------
+
+                    pe0_valid_i = valid_i;
+                    pe2_valid_i = valid_i;
+
+                    // PE0 Routing (Adjacent Elements: X0, X1)
+                    pe0_a0_i = op_a0_i;   // X0
+                    pe0_b0_i = op_a1_i;   // X1
+                    pe0_w0_i = op_b0_i;
+
+                    // PE2 Routing (Adjacent Elements: X2, X3)
+                    pe2_a2_i = op_a2_i;   // X2
+                    pe2_b2_i = op_a3_i;   // X3
+                    pe2_w1_i = op_b1_i;   // Driven to 2^-1
+                    pe2_w2_i = op_b2_i;
+
+                    // Direct Outputs
+                    z0_o = pe0_u0_o;
+                    z1_o = pe0_v0_o;
+                    z2_o = pe2_u2_o;
+                    z3_o = pe2_v2_o;
+                    valid_o = pe0_valid_o & pe2_valid_o;
+                end
             end
 
             PE_MODE_ADDSUB : begin
-                // External Mapping assumption for ADDSUB:
-                // x0 = X_0, x1 = X_1, x2 = X_2, x3 = X_3
-                // y0 = Y_0, y1 = Y_1, y2 = Y_2, y3 = Y_3
+                // ---------------------------------------------------------
+                // External Mapping for Point-wise ADD/SUB (8 Inputs Used):
+                // op_a0_i = X_0         op_b0_i = Y_0
+                // op_a1_i = X_1         op_b1_i = Y_1
+                // op_a2_i = X_2         op_b2_i = Y_2
+                // op_a3_i = X_3         op_b3_i = Y_3
+                // ---------------------------------------------------------
+
+                // ALL PEs run in parallel (Stage 1)
+                pe0_valid_i = valid_i;
+                pe1_valid_i = valid_i;
+                pe2_valid_i = valid_i;
+                pe3_valid_i = valid_i;
 
                 // CE0 Routing
-                pe0_a0_i = x0_i;
-                pe0_b0_i = y0_i;
+                pe0_a0_i = op_a0_i;
+                pe0_b0_i = op_b0_i;
 
-                // CE1 Routing
-                pe1_a1_i = x2_i;
-                pe1_b1_i = y2_i;
+                // CE1 Routing (Follows Table 1 mapping X2/Y2)
+                pe1_a1_i = op_a2_i;
+                pe1_b1_i = op_b2_i;
 
-                // CE2 Routing
-                pe2_a2_i = x1_i;
-                pe2_b2_i = y1_i;
+                // CE2 Routing (Follows Table 1 mapping X1/Y1)
+                pe2_a2_i = op_a1_i;
+                pe2_b2_i = op_b1_i;
 
-                // CE3 Routing
-                pe3_a3_i = x3_i;
-                pe3_b3_i = y3_i;
+                // CE3 Routing (Follows Table 1 mapping X3/Y3)
+                pe3_a3_i = op_a3_i;
+                pe3_b3_i = op_b3_i;
 
-                // ==========================================================
-                // EXPLICIT OUTPUT NOTE (ADDSUB):
-                // The ADDSUB mode computes both Addition (U pins) and
-                // Subtraction (V pins) simultaneously inside the PEs.
-                // Because this wrapper only exposes four 12-bit output ports
-                // (z0_o to z3_o), we are only mapping the Addition (U) results
-                // here. If your top-level control logic requires the
-                // subtraction results simultaneously, you will need to expand
-                // the pe_unit interface to expose the V pins directly.
-                // ==========================================================
-                z0_o = pe0_u0_o;
-                z1_o = pe1_u1_o;
-                z2_o = pe2_u2_o;
-                z3_o = pe3_u3_o;
+                // Outputs - Use the mode_i flag to select Add (U) or Sub (V)
+                if (mode_i == 1'b0) begin
+                    // Addition Mode
+                    z0_o = pe0_u0_o;
+                    z1_o = pe1_u1_o;
+                    z2_o = pe2_u2_o;
+                    z3_o = pe3_u3_o;
+                end else begin
+                    // Subtraction Mode
+                    z0_o = pe0_v0_o;
+                    z1_o = pe1_v1_o;
+                    z2_o = pe2_v2_o;
+                    z3_o = pe3_v3_o;
+                end
+                valid_o = pe0_valid_o & pe1_valid_o & pe2_valid_o & pe3_valid_o;
             end
 
             PE_MODE_COMP, PE_MODE_DECOMP : begin
-                // External Mapping assumption for COMP / DECOMP:
-                // x0 = X_0, x1 = X_1, x2 = X_2, x3 = X_3
-                // w0 = m/q, w1 = m/q, w2 = m/q, w3 = m/q
+                // ---------------------------------------------------------
+                // External Mapping for COMP / DECOMP (8 Inputs Used):
+                // op_a0_i = X_0         op_b0_i = m/q
+                // op_a1_i = X_1         op_b1_i = m/q
+                // op_a2_i = X_2         op_b2_i = m/q
+                // op_a3_i = X_3         op_b3_i = m/q
+                // ---------------------------------------------------------
 
-                // Both Compression and Decompression share the same physical routing
+                // PE0, PE2, PE3 run in parallel. PE1 is unused.
+                pe0_valid_i = valid_i;
+                pe2_valid_i = valid_i;
+                pe3_valid_i = valid_i;
+
                 // CE0 Routing
-                pe0_b0_i = x0_i;
-                pe0_w0_i = w0_i;      // m/q
+                pe0_b0_i = op_a0_i;   // X_0
+                pe0_w0_i = op_b0_i;   // m/q
 
                 // CE2 Routing
-                pe2_a2_i = x1_i;
-                pe2_b2_i = x2_i;
-                pe2_w1_i = w1_i;      // m/q
-                pe2_w2_i = w2_i;      // m/q
+                pe2_a2_i = op_a1_i;   // X_1
+                pe2_b2_i = op_a2_i;   // X_2
+                pe2_w1_i = op_b1_i;   // m/q
+                pe2_w2_i = op_b2_i;   // m/q
 
                 // CE3 Routing
-                pe3_b3_i = x3_i;
-                pe3_w3_i = w3_i;      // m/q
+                pe3_b3_i = op_a3_i;   // X_3
+                pe3_w3_i = op_b3_i;   // m/q
 
                 // Outputs
                 z0_o = pe0_v0_o;      // V0
                 z1_o = pe2_u2_o;      // U2
                 z2_o = pe2_v2_o;      // V2
                 z3_o = pe3_v3_o;      // V3
+                valid_o = pe0_valid_o & pe2_valid_o & pe3_valid_o;
             end
 
             default : begin
-                // Safely falls back to top-level default assignments ('0)
-
-                // Simulation-only error catching for invalid control states
                 // synthesis translate_off
-                $error("[AU Wrapper] ERROR: Invalid pe_mode_e state received: %b", ctrl_i);
+                if (!$isunknown(ctrl_i)) begin // Use isunknown condition to avoid startup error
+                    $error("[AU Wrapper] ERROR: Invalid pe_mode_e state received: %b", ctrl_i);
+                end
                 // synthesis translate_on
             end
         endcase
     end
-
 endmodule

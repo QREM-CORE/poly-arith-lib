@@ -31,7 +31,7 @@
  * |------------------|----------------------------|---------------|---------------|---------|
  * | PE_MODE_NTT      | Number Theoretic Transform | A + B*W       | A - B*W       | 4 CCs   |
  * | PE_MODE_INTT     | Inverse NTT                | (A + B)/2     | (A - B)*W     | 4 CCs   |
- * | PE_MODE_CWM      | Coordinate-Wise Mult       | A + B*W       | A - B*W       | 4 CCs   |
+ * | PE_MODE_CWM      | Coordinate-Wise Mult       | A + B*W       | B*W - A       | 4 CCs   |
  * | PE_MODE_CODECO   | Compression / Decomp       | A             | B*W           | 3 CCs   |
  * | PE_MODE_ADDSUB   | Point-wise Add/Sub         | A + B         | A - B         | 1 CC    |
  */
@@ -240,8 +240,21 @@ module pe0 (
 
         .result_o   (mod_sub_result_o)
     );
-    assign mod_sub_op1_i    = ctrl_i[0] ? a0_i : delay_3_data_o;
-    assign mod_sub_op2_i    = ctrl_i[0] ? b0_i : mod_mul_result_o;
+    always_comb begin
+        case(ctrl_i)
+            // Do (bottom_input - top_input) for CWM subtractor
+            PE_MODE_CWM : begin
+                mod_sub_op1_i = mod_mul_result_o;
+                mod_sub_op2_i = delay_3_data_o;
+            end
+
+            // Do (top_input - bottom_input) for everything else
+            default : begin
+                mod_sub_op1_i = ctrl_i[0] ? a0_i : delay_3_data_o;
+                mod_sub_op2_i = ctrl_i[0] ? b0_i : mod_mul_result_o;
+            end
+        endcase
+    end
 
     // -------- Modular Divider2 Instantiation --------
     mod_mul u_mod_mul (
