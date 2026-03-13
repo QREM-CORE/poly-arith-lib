@@ -32,15 +32,21 @@
  *   the negation is absorbed into the ROM constant, eliminating runtime
  *   subtractors on the twiddle factor path.
  *
- * Port Mapping to pe_unit:
- * +----------+---------------+--------------------+------------------+
- * | ROM Port | pe_unit Input | Radix-4 Role       | Radix-2 Role     |
- * +----------+---------------+--------------------+------------------+
- * | w0_o     | w0_i (PE0)    | Stage B twiddle    | Butterfly twiddle|
- * | w1_o     | w1_i (PE2 M1) | Stage A top twiddle| Unused (0)       |
- * | w2_o     | w2_i (PE2 M2) | Stage A bot twiddle| Unused (0)       |
- * | w3_o     | w3_i (PE3 TF) | omega_4 / ^(-1)    | omega_4 / ^(-1)  |
- * +----------+---------------+--------------------+------------------+
+ * Port Mapping to pe_unit (op_b bus):
+ * +----------+---------------+--------------------+-----------------------------+
+ * | ROM Port | pe_unit Input | Radix-4 Role       | Radix-2 Role                |
+ * +----------+---------------+--------------------+-----------------------------+
+ * | w0_o     | op_b0 (PE0)   | Stage B twiddle    | PE0 twiddle (omega)         |
+ * | w1_o     | op_b1 (PE2 W1)| Stage A top twiddle| 1 (NTT) / 1665 (INTT)      |
+ * | w2_o     | op_b2 (PE2 W2)| Stage A bot twiddle| PE2 twiddle (= same omega)  |
+ * | w3_o     | op_b3 (PE3 TF)| omega_4 / ^(-1)    | omega_4 / ^(-1) (unused)    |
+ * +----------+---------------+--------------------+-----------------------------+
+ *
+ * Radix-2 Note:
+ *   PE0 and PE2 operate in parallel, each performing a separate butterfly.
+ *   Both butterflies in the same block use the same twiddle factor, so
+ *   w0_o == w2_o.  PE2's W1 input (op_b1) must be 1 for NTT (bypass) or
+ *   1665 = 2^-1 mod Q for INTT (division by 2 via modular multiplication).
  *
  * All outputs are registered (1 clock cycle read latency).
  */
@@ -190,8 +196,10 @@ module tf_rom (
     // =========================================================================
     // Output Multiplexing & Registration (1 Clock Cycle Read Latency)
     // =========================================================================
-    // Radix-4: w0 = w2 (Stage B), w1 = w1 (Stage A top), w2 = w3 (Stage A bot)
-    // Radix-2: w0 = omega (butterfly), w1 = 0, w2 = 0
+    // Radix-4: w0 = w2 (Stage B→PE0), w1 = w1 (Stage A top→PE2 W1),
+    //          w2 = w3 (Stage A bot→PE2 W2)
+    // Radix-2: w0 = omega (PE0), w1 = 1|1665 (PE2 W1 constant),
+    //          w2 = omega (PE2 W2, same twiddle as PE0)
 
     always_ff @(posedge clk) begin
         if (rst) begin
@@ -199,10 +207,10 @@ module tf_rom (
             w1_o <= '0;
             w2_o <= '0;
         end else if (is_radix2_i) begin
-            // Radix-2 pass: single twiddle factor on w0
-            w0_o <= r2_data;
-            w1_o <= '0;
-            w2_o <= '0;
+            // Radix-2 pass: PE0 and PE2 run parallel butterflies
+            w0_o <= r2_data;                              // PE0 twiddle (omega / omega^-1_neg)
+            w1_o <= is_intt_i ? INV_2_MOD_Q : 12'd1;     // PE2 W1: 2^-1 (INTT) or 1 (NTT bypass)
+            w2_o <= r2_data;                              // PE2 W2: same omega as PE0
         end else begin
             // Radix-4 pass: three twiddle factors
             w0_o <= r4_w2;      // w2 -> PE0 (Stage B)

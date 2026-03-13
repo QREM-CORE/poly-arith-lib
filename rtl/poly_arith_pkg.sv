@@ -83,6 +83,10 @@ package poly_arith_pkg;
     parameter logic [11:0] OMEGA_4_NTT  = 12'd1729;   // zeta^64 mod Q
     parameter logic [11:0] OMEGA_4_INTT = 12'd1600;   // zeta^(-64) mod Q
 
+    // Modular inverse of 2:  2 * 1665 = 3330 ≡ 1 (mod 3329)
+    // Used by PE2 in INTT Radix-2 mode to perform (A+B)/2 via multiplication.
+    parameter logic [11:0] INV_2_MOD_Q  = 12'd1665;   // 2^(-1) mod Q
+
     // =========================================================================
     // 5. PE Constants
     // =========================================================================

@@ -454,18 +454,18 @@ module tf_rom_addr_gen_tb;
         @(posedge clk); // Cycle 2: ROM outputs registered value
 
         // OMEGA_INV_ROM[0] = 17 (pre-negated)
-        // w0 = r2_data = 17, w1 = 0, w2 = 0
+        // w0 = r2_data = 17, w1 = 1665 (INV_2_MOD_Q), w2 = r2_data = 17
         total_tests += 4;
         if (w0 !== 12'd17) begin
             $error("INTT ROM R2: w0=%0d, expected=17 (OMEGA_INV_ROM[0])", w0);
             errors++;
         end
-        if (w1 !== 12'd0) begin
-            $error("INTT ROM R2: w1=%0d, expected=0 (radix-2)", w1);
+        if (w1 !== 12'd1665) begin
+            $error("INTT ROM R2: w1=%0d, expected=1665 (INV_2_MOD_Q for INTT R2)", w1);
             errors++;
         end
-        if (w2 !== 12'd0) begin
-            $error("INTT ROM R2: w2=%0d, expected=0 (radix-2)", w2);
+        if (w2 !== 12'd17) begin
+            $error("INTT ROM R2: w2=%0d, expected=17 (same omega as w0)", w2);
             errors++;
         end
         if (w3 !== 12'd1600) begin
@@ -474,7 +474,7 @@ module tf_rom_addr_gen_tb;
         end
         $display("  INTT R2[0]: w0=%0d w1=%0d w2=%0d w3=%0d %s",
                  w0, w1, w2, w3,
-                 (w0 == 17 && w1 == 0 && w2 == 0 && w3 == 1600) ? "PASS" : "FAIL");
+                 (w0 == 17 && w1 == 1665 && w2 == 17 && w3 == 1600) ? "PASS" : "FAIL");
 
         // Let INTT run to completion
         wait (ag_busy == 1'b0);
