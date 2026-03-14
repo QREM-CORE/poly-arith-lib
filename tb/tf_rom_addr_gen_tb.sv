@@ -502,10 +502,12 @@ module tf_rom_addr_gen_tb;
         @(posedge clk);
         start = 1'b0;
 
-        while (ag_busy) begin
+        // Use do-while: the first @(posedge clk) lets the NBA resolve
+        // state_r from S_IDLE → S_PASS_1 before we read ag_busy.
+        do begin
             @(posedge clk);
             if (ag_valid) ntt_cycles++;
-        end
+        end while (ag_busy);
 
         total_tests++;
         if (ntt_cycles !== 320) begin
@@ -524,10 +526,10 @@ module tf_rom_addr_gen_tb;
         @(posedge clk);
         start = 1'b0;
 
-        while (ag_busy) begin
+        do begin
             @(posedge clk);
             if (ag_valid) intt_cycles++;
-        end
+        end while (ag_busy);
 
         total_tests++;
         if (intt_cycles !== 320) begin
