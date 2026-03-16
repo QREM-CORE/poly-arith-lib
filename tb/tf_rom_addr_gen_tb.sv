@@ -32,7 +32,7 @@ module tf_rom_addr_gen_tb;
     logic [5:0]     r2_addr;
     logic           is_intt;
     logic           is_radix2;
-    logic           ag_valid, ag_busy;
+    logic           ag_valid;
     logic [1:0]     pass_num;
 
     // ROM
@@ -41,7 +41,7 @@ module tf_rom_addr_gen_tb;
     // =========================================================================
     // Clock Generation (100 MHz)
     // =========================================================================
-    localparam CLK_PERIOD = 10;
+    localparam int CLK_PERIOD = 10;
 
     initial clk = 0;
     always #(CLK_PERIOD / 2) clk = ~clk;
@@ -53,15 +53,16 @@ module tf_rom_addr_gen_tb;
         .clk            (clk),
         .rst            (rst),
         .start_i        (start),
-        .mode_i         (mode),
+        .ctrl_i         (mode),
         .r4_addr_o      (r4_addr),
         .r2_addr_o      (r2_addr),
-        .is_intt_o      (is_intt),
         .is_radix2_o    (is_radix2),
         .valid_o        (ag_valid),
-        .busy_o         (ag_busy),
         .pass_o         (pass_num)
     );
+
+    // is_intt is derived from mode (controller responsibility)
+    assign is_intt = (mode == PE_MODE_INTT);
 
     tf_rom u_tf_rom (
         .clk            (clk),
@@ -238,7 +239,7 @@ module tf_rom_addr_gen_tb;
 
         // Wait for FSM to return to IDLE
         @(posedge clk);
-        if (ag_busy) begin
+        if (ag_valid) begin
             $error("NTT: Address generator still busy after all passes!");
             errors++;
         end
@@ -381,7 +382,7 @@ module tf_rom_addr_gen_tb;
 
         // Wait for FSM to return to IDLE
         @(posedge clk);
-        if (ag_busy) begin
+        if (ag_valid) begin
             $error("INTT: Address generator still busy after all passes!");
             errors++;
         end
@@ -439,7 +440,7 @@ module tf_rom_addr_gen_tb;
                  (w0 == 289 && w1 == 17 && w2 == 1584 && w3 == 1729) ? "PASS" : "FAIL");
 
         // Let NTT run to completion
-        wait (ag_busy == 1'b0);
+        wait (ag_valid == 1'b0);
         @(posedge clk);
 
         // --- INTT: Check first Radix-2 entry ---
@@ -477,7 +478,7 @@ module tf_rom_addr_gen_tb;
                  (w0 == 17 && w1 == 1665 && w2 == 17 && w3 == 1600) ? "PASS" : "FAIL");
 
         // Let INTT run to completion
-        wait (ag_busy == 1'b0);
+        wait (ag_valid == 1'b0);
         @(posedge clk);
 
         $display("\n  ROM VALUE CHECK COMPLETE: %0d errors",
@@ -503,11 +504,11 @@ module tf_rom_addr_gen_tb;
         start = 1'b0;
 
         // Use do-while: the first @(posedge clk) lets the NBA resolve
-        // state_r from S_IDLE → S_PASS_1 before we read ag_busy.
+        // state_r from S_IDLE → S_PASS_1 before we read ag_valid.
         do begin
             @(posedge clk);
             if (ag_valid) ntt_cycles++;
-        end while (ag_busy);
+        end while (ag_valid);
 
         total_tests++;
         if (ntt_cycles !== 320) begin
@@ -529,7 +530,7 @@ module tf_rom_addr_gen_tb;
         do begin
             @(posedge clk);
             if (ag_valid) intt_cycles++;
-        end while (ag_busy);
+        end while (ag_valid);
 
         total_tests++;
         if (intt_cycles !== 320) begin

@@ -56,19 +56,17 @@ module tf_addr_gen (
 
     // ---- Control Interface (from AU Controller) ----
     input   logic           start_i,        // Pulse high for 1 cycle to begin
-    input   pe_mode_e       mode_i,         // Operating mode (NTT, INTT, CWM)
+    input   pe_mode_e       ctrl_i,         // Operating mode (NTT, INTT, CWM)
 
     // ---- ROM Address Outputs (directly wired to tf_rom) ----
     output  logic [4:0]     r4_addr_o,      // Radix-4 ROM address (0..20)
     output  logic [5:0]     r2_addr_o,      // Radix-2 ROM address (0..63)
 
     // ---- Control Outputs (directly wired to tf_rom) ----
-    output  logic           is_intt_o,      // 1 = INTT mode
     output  logic           is_radix2_o,    // 1 = current pass is Radix-2
 
     // ---- Status Outputs ----
     output  logic           valid_o,        // High when addresses are valid
-    output  logic           busy_o,         // High during active generation
     output  logic [1:0]     pass_o          // Current pass number (0-3)
 );
 
@@ -224,8 +222,8 @@ module tf_addr_gen (
         case (state_r)
             S_IDLE: begin
                 if (start_i) begin
-                    if (mode_i == PE_MODE_NTT || mode_i == PE_MODE_INTT ||
-                        mode_i == PE_MODE_CWM) begin
+                    if (ctrl_i == PE_MODE_NTT || ctrl_i == PE_MODE_INTT ||
+                        ctrl_i == PE_MODE_CWM) begin
                         state_next = S_PASS_1;
                     end
                 end
@@ -278,9 +276,9 @@ module tf_addr_gen (
             case (state_r)
                 S_IDLE: begin
                     if (start_i) begin
-                        mode_r      <= mode_i;
-                        is_intt_r   <= (mode_i == PE_MODE_INTT);
-                        is_cwm_r    <= (mode_i == PE_MODE_CWM);
+                        mode_r      <= ctrl_i;
+                        is_intt_r   <= (ctrl_i == PE_MODE_INTT);
+                        is_cwm_r    <= (ctrl_i == PE_MODE_CWM);
                         bf_cnt_r    <= '0;
                         block_cnt_r <= '0;
                         r4_cnt_r    <= '0;
@@ -328,9 +326,7 @@ module tf_addr_gen (
     // =========================================================================
     // Status Outputs
     // =========================================================================
-    assign busy_o      = (state_r != S_IDLE);
     assign valid_o     = (state_r != S_IDLE);
-    assign is_intt_o   = is_intt_r;
     assign is_radix2_o = pass_is_radix2;
 
     always_comb begin
