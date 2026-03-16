@@ -236,6 +236,7 @@ module tf_addr_gen (
                             2'd1: state_next = S_PASS_2;
                             2'd2: state_next = S_PASS_3;
                             2'd3: state_next = S_PASS_4;
+                            default: state_next = S_IDLE;
                         endcase
                     end else if (ctrl_i == PE_MODE_CWM) begin
                         state_next = S_PASS_1;
