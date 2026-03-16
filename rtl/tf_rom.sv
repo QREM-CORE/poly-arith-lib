@@ -178,7 +178,7 @@ module tf_rom (
     logic [35:0] r4_data;
     logic [11:0] r2_data;
 
-    // HARDWARE CLAMP: Protects the 21-element R4 ROM from Out-of-Bounds access    // HARDWARE CLAMP: Protects the 21-element R4 ROM from Out-of-Bounds access
+    // HARDWARE CLAMP: Protects the 21-element R4 ROM from Out-of-Bounds access
     // by forcing the address to 0 during Radix-2 passes (where tf_addr_i goes up to 63).
     logic [4:0] safe_r4_addr;
     assign safe_r4_addr = is_radix2_i ? 5'd0 : tf_addr_i[4:0];
