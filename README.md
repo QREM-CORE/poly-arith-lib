@@ -21,7 +21,6 @@ Supported hardware operations include:
 * **INTT (Inverse NTT):** Mixed Radix-2 / Radix-4 Decimation-in-Frequency.
 * **CWM (Coordinate-Wise Multiplication):** Base multiplication of polynomials in the NTT domain.
 * **Point-wise Addition & Subtraction:** Standard polynomial accumulation.
-* **Compression & Decompression:** Shift-and-add rounding optimizations mapping to FIPS 203 parameters ($d \in \{1, 4, 5, 10, 11\}$).
 
 ## 📂 Module Hierarchy
 
@@ -34,7 +33,7 @@ The computational muscle of the unit. The PEs are deeply pipelined to maximize c
 
 ### 2. Modular Arithmetic Operations
 Low-level mathematical building blocks designed strictly for 12-bit integer arithmetic modulo $q = 3329$.
-* `mod_mul.sv`: Standard modular multiplier (includes bypass logic for specific compression operations).
+* `mod_mul.sv`: Standard modular multiplier.
 * `mod_add.sv` / `mod_sub.sv`: Modular adders and subtractors.
 * `mod_uni_add_sub.sv`: Unified adder/subtractor.
 * `mod_div_by_2.sv`: Optimized shift logic for modular division.
