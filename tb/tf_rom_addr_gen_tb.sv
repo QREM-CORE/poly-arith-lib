@@ -41,7 +41,7 @@ module tf_rom_addr_gen_tb;
     // =========================================================================
     // Clock Generation (100 MHz)
     // =========================================================================
-    localparam CLK_PERIOD = 10;
+    localparam int CLK_PERIOD = 10;
 
     initial clk = 0;
     always #(CLK_PERIOD / 2) clk = ~clk;
