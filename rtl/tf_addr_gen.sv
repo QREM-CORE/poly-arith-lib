@@ -24,6 +24,13 @@
  *
  * CWM: address is just the block counter (0..63), output on r2_addr.
  *
+ * Pass-at-a-Time Architecture:
+ * The FSM executes one pass at a time, returning to S_IDLE after each pass
+ * completes. The top-level controller pulses start_i for each pass with the
+ * pass index on pass_idx_i (0..3). This decoupling allows the controller to
+ * flush the PE pipeline, swap SRAM read/write pointers, and update ctrl_i
+ * control lines between passes safely.
+ *
  * NTT Schedule (Forward, Cooley-Tukey, Decimation-in-Time):
  * | Pass | Type    | Stages | Blocks | BFs/Block | Total Cycles | ROM        |
  * |------|---------|--------|--------|-----------|--------------|------------|
@@ -57,6 +64,7 @@ module tf_addr_gen (
     // ---- Control Interface (from AU Controller) ----
     input   logic           start_i,        // Pulse high for 1 cycle to begin
     input   pe_mode_e       ctrl_i,         // Operating mode (NTT, INTT, CWM)
+    input   logic [1:0]     pass_idx_i,     // Which pass to run (0..3)
 
     // ---- ROM Address Outputs (directly wired to tf_rom) ----
     output  logic [4:0]     r4_addr_o,      // Radix-4 ROM address (0..20)
@@ -222,33 +230,20 @@ module tf_addr_gen (
         case (state_r)
             S_IDLE: begin
                 if (start_i) begin
-                    if (ctrl_i == PE_MODE_NTT || ctrl_i == PE_MODE_INTT ||
-                        ctrl_i == PE_MODE_CWM) begin
+                    if (ctrl_i == PE_MODE_NTT || ctrl_i == PE_MODE_INTT) begin
+                        case (pass_idx_i)
+                            2'd0: state_next = S_PASS_1;
+                            2'd1: state_next = S_PASS_2;
+                            2'd2: state_next = S_PASS_3;
+                            2'd3: state_next = S_PASS_4;
+                        endcase
+                    end else if (ctrl_i == PE_MODE_CWM) begin
                         state_next = S_PASS_1;
                     end
                 end
             end
 
-            S_PASS_1: begin
-                if (pass_last) begin
-                    if (is_cwm_r)
-                        state_next = S_IDLE;
-                    else
-                        state_next = S_PASS_2;
-                end
-            end
-
-            S_PASS_2: begin
-                if (pass_last)
-                    state_next = S_PASS_3;
-            end
-
-            S_PASS_3: begin
-                if (pass_last)
-                    state_next = S_PASS_4;
-            end
-
-            S_PASS_4: begin
+            S_PASS_1, S_PASS_2, S_PASS_3, S_PASS_4: begin
                 if (pass_last)
                     state_next = S_IDLE;
             end
@@ -281,8 +276,9 @@ module tf_addr_gen (
                         is_cwm_r    <= (ctrl_i == PE_MODE_CWM);
                         bf_cnt_r    <= '0;
                         block_cnt_r <= '0;
-                        r4_cnt_r    <= '0;
                         r2_cnt_r    <= '0;
+                        if (pass_idx_i == 2'd0)
+                            r4_cnt_r <= '0;
                     end
                 end
 

@@ -976,8 +976,9 @@ This means the address presented at cycle $n$ produces valid output at cycle $n+
   \midrule
   \port{clk}          & in  & \sv{logic}    & 1  & System clock \\
   \port{rst}          & in  & \sv{logic}    & 1  & Synchronous active-high reset \\
-  \port{start\_i}     & in  & \sv{logic}    & 1  & Start pulse (1 cycle) \\
+  \port{start\_i}     & in  & \sv{logic}    & 1  & Start pulse (1 cycle --- triggers one pass) \\
   \port{mode\_i}      & in  & \sv{pe\_mode\_e}& 4 & NTT / INTT / CWM \\
+  \port{pass\_idx\_i} & in  & \sv{logic}    & 2  & Which pass to run (0--3) \\
   \midrule
   \port{r4\_addr\_o}  & out & \sv{logic}    & 5  & $\to$ \port{tf\_rom.r4\_addr\_i} \\
   \port{r2\_addr\_o}  & out & \sv{logic}    & 6  & $\to$ \port{tf\_rom.r2\_addr\_i} \\
@@ -1003,47 +1004,49 @@ This means the address presented at cycle $n$ produces valid output at cycle $n+
     cyc/.style={font=\tiny\sffamily, text=gray, fill=white, inner sep=1pt},
     every loop/.style={looseness=5}
 ]
-    \node[state, fill=gray!15]     (idle) at (0,0)      {S\_IDLE};
-    \node[state, fill=nttblue!12]  (p1)   at (3.5,0)    {S\_PASS\_1};
-    \node[state, fill=nttblue!18]  (p2)   at (7,0)      {S\_PASS\_2};
-    \node[state, fill=nttblue!24]  (p3)   at (10.5,0)   {S\_PASS\_3};
-    \node[state, fill=nttblue!30]  (p4)   at (10.5,-2.8){S\_PASS\_4};
+    % Central hub
+    \node[state, fill=gray!15] (idle) at (0,0) {S\_IDLE};
 
-    % Pass type annotations below each state
-    \node[cyc, below=1mm of p1] {NTT: R4\,(64\,CC) / INTT: R2\,(128\,CC)};
-    \node[cyc, below=1mm of p2] {R4\,(64\,CC)};
-    \node[cyc, below=1mm of p3] {R4\,(64\,CC)};
-    \node[cyc, below=1mm of p4] {NTT: R2\,(128\,CC) / INTT: R4\,(64\,CC)};
+    % Pass states in a row below
+    \node[state, fill=nttblue!12] (p1) at (-4.5, -3) {S\_PASS\_1};
+    \node[state, fill=nttblue!18] (p2) at (-1.5, -3) {S\_PASS\_2};
+    \node[state, fill=nttblue!24] (p3) at ( 1.5, -3) {S\_PASS\_3};
+    \node[state, fill=nttblue!30] (p4) at ( 4.5, -3) {S\_PASS\_4};
 
-    % Forward transitions
-    \draw[arr] (idle) -- (p1) node[cond, midway, above] {\port{start\_i}};
-    \draw[arr] (p1)   -- (p2) node[cond, midway, above] {\textit{pass\_done}};
-    \draw[arr] (p2)   -- (p3) node[cond, midway, above] {\textit{pass\_done}};
-    \draw[arr] (p3)   -- (p4) node[cond, midway, right] {\textit{pass\_done}};
+    % Cycle counts below each state
+    \node[cyc, below=1mm of p1] {NTT:R4(64) / INTT:R2(128)};
+    \node[cyc, below=1mm of p2] {R4 (64\,CC)};
+    \node[cyc, below=1mm of p3] {R4 (64\,CC)};
+    \node[cyc, below=1mm of p4] {NTT:R2(128) / INTT:R4(64)};
 
-    % Return to idle
-    \draw[arr] (p4.south) -- ++(0,-1) -| (idle.south)
-        node[cond, near start, right] {\textit{pass\_done}};
+    % Forward: IDLE -> each pass state
+    \draw[arr] (idle) -- (p1) node[cond, midway, left]  {\port{start\_i}, idx\!=\!0};
+    \draw[arr] (idle) -- (p2) node[cond, midway, left]  {idx\!=\!1};
+    \draw[arr] (idle) -- (p3) node[cond, midway, right] {idx\!=\!2};
+    \draw[arr] (idle) -- (p4) node[cond, midway, right] {idx\!=\!3};
 
-    % CWM shortcut
-    \draw[arr, dashed, cwmgreen, thick]
-        (p1.south) -- ++(0,-0.9) -| ([xshift=3mm]idle.south)
-        node[cond, pos=0.25, right] {\textit{CWM done}\; (64\,CC)};
+    % Return: pass states -> IDLE (curved dashed arrows)
+    \draw[arr, gray!60, densely dashed] (p1.north east) to[bend left=15]
+        node[cond, pos=0.4, right] {\textit{done}} ([xshift=-4mm]idle.south);
+    \draw[arr, gray!60, densely dashed] (p2.north) to[bend left=10] ([xshift=-1.5mm]idle.south);
+    \draw[arr, gray!60, densely dashed] (p3.north) to[bend right=10] ([xshift=1.5mm]idle.south);
+    \draw[arr, gray!60, densely dashed] (p4.north west) to[bend right=15] ([xshift=4mm]idle.south);
 
     % Self loops
-    \draw[arr, gray!60] (p1.north) to[loop above] node[cond] {counting} (p1.north);
-    \draw[arr, gray!60] (p2.north) to[loop above] node[cond] {counting} (p2.north);
-    \draw[arr, gray!60] (p3.north) to[loop above] node[cond] {counting} (p3.north);
-    \draw[arr, gray!60] (p4.east)  to[loop right] node[cond] {counting} (p4.east);
+    \draw[arr, gray!40] (p1.west) to[loop left]  node[cond] {counting} (p1.west);
+    \draw[arr, gray!40] (p2.west) to[loop left]  node[cond] {counting} (p2.west);
+    \draw[arr, gray!40] (p3.east) to[loop right] node[cond] {counting} (p3.east);
+    \draw[arr, gray!40] (p4.east) to[loop right] node[cond] {counting} (p4.east);
 
-    % Total cycle annotation
-    \node[font=\scriptsize\sffamily, text=gray, anchor=north west] at (-1, -4.2)
-        {Total: 320\,CC (NTT/INTT) or 64\,CC (CWM)};
+    % Note
+    \node[font=\scriptsize\sffamily, text=gray] at (0, -4.5)
+        {Pass-at-a-time: all passes return to \sv{S\_IDLE}. CWM uses idx=0 only (64\,CC). Total: 320\,CC for NTT/INTT.};
 
 \end{tikzpicture}
-\caption{FSM state diagram of \sv{tf\_addr\_gen}. CWM mode exits after Pass~1.
-  Each state self-loops while counting butterflies/blocks within its pass.
-  Cycle counts (CC) are shown per pass.}
+\caption{FSM state diagram of \sv{tf\_addr\_gen} (pass-at-a-time architecture).
+  The top-level controller selects which pass to run via \port{pass\_idx\_i}.
+  Each pass self-loops while counting, then returns to \sv{S\_IDLE}.
+  CWM mode only uses pass~0 (\sv{S\_PASS\_1}).}
 \label{fig:fsm}
 \end{figure}
 
@@ -1059,14 +1062,18 @@ The module maintains four counters:
   \midrule
   \sv{bf\_cnt\_r}    & 6 bits & Per-block  & Counts butterflies within a block \\
   \sv{block\_cnt\_r} & 6 bits & Per-pass   & Counts blocks within a pass \\
-  \sv{r4\_cnt\_r}    & 5 bits & On start   & Sequential R4 ROM counter (\textbf{persists across passes}) \\
+  \sv{r4\_cnt\_r}    & 5 bits & On pass~0 start & Sequential R4 ROM counter (\textbf{persists across passes}) \\
   \sv{r2\_cnt\_r}    & 6 bits & Per-pass   & Sequential R2 ROM counter \\
   \bottomrule
 \end{tabular}
 \end{center}
 
 \paragraph{Critical detail: \sv{r4\_cnt\_r} persistence.}
-The Radix-4 ROM counter is \emph{not} reset between passes. It starts at 0 when \port{start\_i} fires and increments at \emph{every} block boundary (including the last block of each pass), counting continuously from 0 to 20 across all three Radix-4 passes:
+The Radix-4 ROM counter is \emph{not} reset between passes. It is only reset to~0
+when \port{start\_i} fires with \port{pass\_idx\_i}$\,=\,$0 (the first pass of an
+NTT or INTT operation). For subsequent passes (idx~1--3), the counter retains
+its value from the previous pass and continues incrementing at every block
+boundary, counting continuously from 0 to 20 across all three Radix-4 passes:
 \begin{itemize}
   \item NTT: Pass~1 uses $t=0$, Pass~2 uses $t=1..4$, Pass~3 uses $t=5..20$
   \item INTT: Pass~2 uses $t=0..15$, Pass~3 uses $t=16..19$, Pass~4 uses $t=20$
@@ -1112,7 +1119,7 @@ The counting hierarchy operates as a nested loop:
   \item \textbf{Pass transition:} When both \sv{bf\_cnt\_r} = \sv{bfs\_max} and \sv{block\_cnt\_r} = \sv{blocks\_max}:
     \begin{itemize}
       \item Reset \sv{bf\_cnt\_r}, \sv{block\_cnt\_r}, and \sv{r2\_cnt\_r}
-      \item Advance the FSM state
+      \item Return to \sv{S\_IDLE} (pass-at-a-time architecture)
       \item Do \textbf{not} reset \sv{r4\_cnt\_r}
     \end{itemize}
 \end{enumerate}
@@ -1325,6 +1332,7 @@ tf_addr_gen u_tf_addr_gen (
     .rst         (rst),
     .start_i     (ctrl_start),      // From AU Controller
     .mode_i      (ctrl_mode),       // From AU Controller
+    .pass_idx_i  (ctrl_pass_idx),   // From AU Controller
     .r4_addr_o   (tf_r4_addr),      // -> tf_rom
     .r2_addr_o   (tf_r2_addr),      // -> tf_rom
     .is_intt_o   (tf_is_intt),      // -> tf_rom
@@ -1461,9 +1469,16 @@ CWM  & 1 & 64  & (external) \\
       \item \sv{PE\_MODE\_CWM} for coefficient-wise multiplication
     \end{itemize}
 
-  \item \textbf{Pulse start}: Assert \port{start\_i} for exactly 1 cycle.
+  \item \textbf{For each pass} (pass-at-a-time architecture):
+    \begin{enumerate}[label=\alph*.]
+      \item Set \port{pass\_idx\_i} to the pass number (0--3).
+      \item Pulse \port{start\_i} high for exactly 1 cycle.
+      \item Wait for \port{valid\_o} to deassert (pass complete, FSM returns to \sv{S\_IDLE}).
+      \item Flush the PE pipeline, swap SRAM read/write pointers, update control lines.
+      \item Repeat for the next pass until all 4 passes are done (or 1 for CWM).
+    \end{enumerate}
 
-  \item \textbf{Wait for operation}: Monitor \port{busy\_o}. While high:
+  \item \textbf{During each pass}: Monitor \port{valid\_o}. While high:
     \begin{itemize}
       \item \port{valid\_o} indicates valid addresses are being produced
       \item \port{pass\_o} indicates the current pass number (0--3)
@@ -1471,7 +1486,7 @@ CWM  & 1 & 64  & (external) \\
       \item Twiddle factor outputs (\port{w0\_o}--\port{w3\_o}) are valid 1 cycle after addresses appear
     \end{itemize}
 
-  \item \textbf{Completion}: When \port{busy\_o} deasserts, all 320 cycles (NTT/INTT) or 64 cycles (CWM) have completed. The system is ready for a new \port{start\_i} pulse.
+  \item \textbf{Completion}: When \port{valid\_o} deasserts after each pass, the FSM has returned to \sv{S\_IDLE}. After all 4 passes (NTT/INTT) or 1 pass (CWM), the full operation is complete.
 
   \item \textbf{PE connections}: Wire the four twiddle outputs to the \sv{pe\_unit} \port{op\_b} bus:
     \begin{itemize}
@@ -1501,7 +1516,9 @@ CWM  & 1 & 64  & (external) \\
 
   \item \textbf{Sequential addressing ($t$++)}: Avoids complex bit-reversal address computation hardware. The Python script pre-computes the correct order offline.
 
-  \item \textbf{Persistent R4 counter}: The \sv{r4\_cnt\_r} counter is not reset between Radix-4 passes, allowing it to smoothly index entries 0--20 across three passes without additional logic.
+  \item \textbf{Persistent R4 counter}: The \sv{r4\_cnt\_r} counter is not reset between Radix-4 passes (only on pass~0 start), allowing it to smoothly index entries 0--20 across three passes without additional logic.
+
+  \item \textbf{Pass-at-a-time FSM}: The FSM executes one pass per \port{start\_i} pulse and returns to \sv{S\_IDLE} after each pass completes. This decoupling gives the top-level controller time to flush the PE pipeline (4-cycle latency), safely switch \port{mode\_i} control lines, and swap SRAM read/write pointers between passes.
 
   \item \textbf{1-cycle registered outputs}: ROM outputs are registered for timing closure, naturally aligning with the coefficient memory pipeline.
 

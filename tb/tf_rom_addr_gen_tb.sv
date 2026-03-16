@@ -27,6 +27,7 @@ module tf_rom_addr_gen_tb;
     // Address Generator
     logic           start;
     pe_mode_e       mode;
+    logic [1:0]     pass_idx;
 
     logic [4:0]     r4_addr;
     logic [5:0]     r2_addr;
@@ -54,6 +55,7 @@ module tf_rom_addr_gen_tb;
         .rst            (rst),
         .start_i        (start),
         .ctrl_i         (mode),
+        .pass_idx_i     (pass_idx),
         .r4_addr_o      (r4_addr),
         .r2_addr_o      (r2_addr),
         .is_radix2_o    (is_radix2),
@@ -115,9 +117,10 @@ module tf_rom_addr_gen_tb;
         $display("  VERIFYING NTT TWIDDLE FACTOR GENERATION");
         $display("===================================================");
 
-        // Start NTT
+        // Start NTT Pass 1
         @(posedge clk);
         mode = PE_MODE_NTT;
+        pass_idx = 2'd0;
         start = 1'b1;
         @(posedge clk);
         start = 1'b0;
@@ -159,6 +162,13 @@ module tf_rom_addr_gen_tb;
         end
         $display("  Pass 1: Verified %0d cycles, r4 counter ended at %0d", cycle_count, expected_r4);
 
+        // Wait for FSM to return to IDLE, then start next pass
+        @(posedge clk);
+        pass_idx = 2'd1;
+        start = 1'b1;
+        @(posedge clk);
+        start = 1'b0;
+
         // === NTT Pass 2 (R4, stages 3&4): 4 blocks x 16 BFs ===
         $display("\n--- NTT Pass 2 (Radix-4, Stages 3&4) ---");
         num_blocks = 4;
@@ -180,6 +190,13 @@ module tf_rom_addr_gen_tb;
             expected_r4++;
         end
         $display("  Pass 2: Verified %0d cycles, r4 counter ended at %0d", cycle_count, expected_r4);
+
+        // Wait for FSM to return to IDLE, then start next pass
+        @(posedge clk);
+        pass_idx = 2'd2;
+        start = 1'b1;
+        @(posedge clk);
+        start = 1'b0;
 
         // === NTT Pass 3 (R4, stages 5&6): 16 blocks x 4 BFs ===
         $display("\n--- NTT Pass 3 (Radix-4, Stages 5&6) ---");
@@ -208,6 +225,13 @@ module tf_rom_addr_gen_tb;
             $error("NTT: r4 counter should reach 21, got %0d", expected_r4);
             errors++;
         end
+
+        // Wait for FSM to return to IDLE, then start next pass
+        @(posedge clk);
+        pass_idx = 2'd3;
+        start = 1'b1;
+        @(posedge clk);
+        start = 1'b0;
 
         // === NTT Pass 4 (R2, stage 7): 64 blocks x 2 BFs ===
         $display("\n--- NTT Pass 4 (Radix-2, Stage 7) ---");
@@ -262,9 +286,10 @@ module tf_rom_addr_gen_tb;
         $display("  VERIFYING INTT TWIDDLE FACTOR GENERATION");
         $display("===================================================");
 
-        // Start INTT
+        // Start INTT Pass 1
         @(posedge clk);
         mode = PE_MODE_INTT;
+        pass_idx = 2'd0;
         start = 1'b1;
         @(posedge clk);
         start = 1'b0;
@@ -302,6 +327,13 @@ module tf_rom_addr_gen_tb;
         end
         $display("  Pass 1: Verified %0d cycles", cycle_count);
 
+        // Wait for FSM to return to IDLE, then start next pass
+        @(posedge clk);
+        pass_idx = 2'd1;
+        start = 1'b1;
+        @(posedge clk);
+        start = 1'b0;
+
         // === INTT Pass 2 (R4, stages 2&3): 16 blocks x 4 BFs ===
         $display("\n--- INTT Pass 2 (Radix-4, Stages 2&3) ---");
         num_blocks = 16;
@@ -330,6 +362,13 @@ module tf_rom_addr_gen_tb;
         end
         $display("  Pass 2: Verified %0d cycles, r4 counter at %0d", cycle_count, expected_r4);
 
+        // Wait for FSM to return to IDLE, then start next pass
+        @(posedge clk);
+        pass_idx = 2'd2;
+        start = 1'b1;
+        @(posedge clk);
+        start = 1'b0;
+
         // === INTT Pass 3 (R4, stages 4&5): 4 blocks x 16 BFs ===
         $display("\n--- INTT Pass 3 (Radix-4, Stages 4&5) ---");
         num_blocks = 4;
@@ -351,6 +390,13 @@ module tf_rom_addr_gen_tb;
             expected_r4++;
         end
         $display("  Pass 3: Verified %0d cycles, r4 counter at %0d", cycle_count, expected_r4);
+
+        // Wait for FSM to return to IDLE, then start next pass
+        @(posedge clk);
+        pass_idx = 2'd3;
+        start = 1'b1;
+        @(posedge clk);
+        start = 1'b0;
 
         // === INTT Pass 4 (R4, stages 6&7): 1 block x 64 BFs ===
         $display("\n--- INTT Pass 4 (Radix-4, Stages 6&7) ---");
@@ -407,6 +453,7 @@ module tf_rom_addr_gen_tb;
         $display("\n--- NTT Radix-4 Pass 1 ROM Values ---");
         @(posedge clk);
         mode = PE_MODE_NTT;
+        pass_idx = 2'd0;
         start = 1'b1;
         @(posedge clk);
         start = 1'b0;
@@ -447,6 +494,7 @@ module tf_rom_addr_gen_tb;
         $display("\n--- INTT Radix-2 Pass 1 ROM Values ---");
         @(posedge clk);
         mode = PE_MODE_INTT;
+        pass_idx = 2'd0;
         start = 1'b1;
         @(posedge clk);
         start = 1'b0;
@@ -495,20 +543,21 @@ module tf_rom_addr_gen_tb;
         $display("  VERIFYING TOTAL CYCLE COUNTS");
         $display("===================================================");
 
-        // NTT: 64 + 64 + 64 + 128 = 320 cycles
-        @(posedge clk);
-        mode = PE_MODE_NTT;
-        start = 1'b1;
+        // NTT: 64 + 64 + 64 + 128 = 320 cycles (4 passes)
         ntt_cycles = 0;
-        @(posedge clk);
-        start = 1'b0;
-
-        // Use do-while: the first @(posedge clk) lets the NBA resolve
-        // state_r from S_IDLE → S_PASS_1 before we read ag_valid.
-        do begin
+        for (int p = 0; p < 4; p++) begin
             @(posedge clk);
-            if (ag_valid) ntt_cycles++;
-        end while (ag_valid);
+            mode = PE_MODE_NTT;
+            pass_idx = p[1:0];
+            start = 1'b1;
+            @(posedge clk);
+            start = 1'b0;
+
+            do begin
+                @(posedge clk);
+                if (ag_valid) ntt_cycles++;
+            end while (ag_valid);
+        end
 
         total_tests++;
         if (ntt_cycles !== 320) begin
@@ -519,18 +568,21 @@ module tf_rom_addr_gen_tb;
 
         @(posedge clk);
 
-        // INTT: 128 + 64 + 64 + 64 = 320 cycles
-        @(posedge clk);
-        mode = PE_MODE_INTT;
-        start = 1'b1;
+        // INTT: 128 + 64 + 64 + 64 = 320 cycles (4 passes)
         intt_cycles = 0;
-        @(posedge clk);
-        start = 1'b0;
-
-        do begin
+        for (int p = 0; p < 4; p++) begin
             @(posedge clk);
-            if (ag_valid) intt_cycles++;
-        end while (ag_valid);
+            mode = PE_MODE_INTT;
+            pass_idx = p[1:0];
+            start = 1'b1;
+            @(posedge clk);
+            start = 1'b0;
+
+            do begin
+                @(posedge clk);
+                if (ag_valid) intt_cycles++;
+            end while (ag_valid);
+        end
 
         total_tests++;
         if (intt_cycles !== 320) begin
@@ -554,6 +606,7 @@ module tf_rom_addr_gen_tb;
         rst   = 1'b1;
         start = 1'b0;
         mode  = PE_MODE_NTT;
+        pass_idx = 2'd0;
 
         // Hold reset for 5 cycles
         repeat(5) @(posedge clk);
