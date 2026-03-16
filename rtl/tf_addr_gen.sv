@@ -22,7 +22,7 @@
  *   Algorithm 5 line 16 (omega_ROM[j/4]) and Algorithm 6 line 2 (omega_inv_ROM[j/4]).
  *   Each Radix-2 block has 2 butterflies sharing the same twiddle factor.
  *
- * CWM: address is just the block counter (0..63), output on r2_addr.
+ * CWM: address is just the block counter (0..63), output on tf_addr.
  *
  * Pass-at-a-Time Architecture:
  * The FSM executes one pass at a time, returning to S_IDLE after each pass
@@ -67,8 +67,7 @@ module tf_addr_gen (
     input   logic [1:0]     pass_idx_i,     // Which pass to run (0..3)
 
     // ---- ROM Address Outputs (directly wired to tf_rom) ----
-    output  logic [4:0]     r4_addr_o,      // Radix-4 ROM address (0..20)
-    output  logic [5:0]     r2_addr_o,      // Radix-2 ROM address (0..63)
+    output  logic [5:0]     tf_addr_o,       // Unified ROM address bus
 
     // ---- Control Outputs (directly wired to tf_rom) ----
     output  logic           is_radix2_o,    // 1 = current pass is Radix-2
@@ -113,7 +112,7 @@ module tf_addr_gen (
     logic [5:0] r2_cnt_r;
 
     // Remembers whether the most-recently-completed pass was Radix-2.
-    // Used to keep the r2_addr_o output valid in S_IDLE at the pass_last
+    // Used to keep the tf_addr_o output valid in S_IDLE at the pass_last
     // clock edge (when state has already transitioned to S_IDLE but the
     // testbench / downstream logic still reads the last BF's address).
     logic       was_radix2_r;
@@ -215,23 +214,17 @@ module tf_addr_gen (
     // =========================================================================
     // Address Output Logic
     // =========================================================================
-    // For Radix-4 passes: output r4_cnt_r (the sequential t counter)
-    // For Radix-2 passes: output r2_cnt_r (the j/4 counter)
-    // For CWM:            output block_cnt_r on r2_addr (omega index)
 
     always_comb begin
         if (is_cwm_r) begin
-            r4_addr_o = '0;
-            r2_addr_o = block_cnt_r;
+            tf_addr_o = block_cnt_r; // CWM uses 0..63
         end else if (pass_is_radix2 || (state_r == S_IDLE && was_radix2_r)) begin
             // In S_IDLE after a Radix-2 pass, keep the last r2_cnt_r value on
             // the output so the pass_last cycle is visible to downstream logic.
-            r4_addr_o = '0;
-            r2_addr_o = r2_cnt_r;
+            tf_addr_o = r2_cnt_r;
         end else begin
             // Covers active Radix-4 states and S_IDLE after a Radix-4 pass.
-            r4_addr_o = r4_cnt_r;
-            r2_addr_o = '0;
+            tf_addr_o = {1'b0, r4_cnt_r}; // Radix-4 uses 0..20 (zero-padded)
         end
     end
 

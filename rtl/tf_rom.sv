@@ -62,8 +62,7 @@ module tf_rom (
     input   logic           is_radix2_i,    // 1 = Radix-2 pass
 
     // ---- Address Inputs ----
-    input   logic [4:0]     r4_addr_i,      // Radix-4 ROM address (0..20)
-    input   logic [5:0]     r2_addr_i,      // Radix-2 ROM address (0..63)
+    input   logic [5:0]     tf_addr_i,      // Unified ROM address (0..63)
 
     // ---- Twiddle Factor Outputs (registered) ----
     output  coeff_t         w0_o,           // PE0 twiddle factor
@@ -181,11 +180,16 @@ module tf_rom (
     logic [35:0] r4_data;
     logic [11:0] r2_data;
 
-    // Radix-4 ROM read
-    assign r4_data = is_intt_i ? R4INTT_ROM[r4_addr_i] : R4NTT_ROM[r4_addr_i];
+    // HARDWARE CLAMP: Protects the 21-element R4 ROM from Out-of-Bounds access
+    // by forcing the address to 0 during Radix-2 passes (where tf_addr_i goes up to 63).
+    logic [4:0] safe_r4_addr;
+    assign safe_r4_addr = is_radix2_i ? 5'd0 : tf_addr_i[4:0];
 
-    // Radix-2 ROM read
-    assign r2_data = is_intt_i ? OMEGA_INV_ROM[r2_addr_i] : OMEGA_ROM[r2_addr_i];
+    // Radix-4 ROM read (Now 100% safe)
+    assign r4_data = is_intt_i ? R4INTT_ROM[safe_r4_addr] : R4NTT_ROM[safe_r4_addr];
+
+    // Radix-2 ROM read (Safely uses the full 6-bit bus)
+    assign r2_data = is_intt_i ? OMEGA_INV_ROM[tf_addr_i] : OMEGA_ROM[tf_addr_i];
 
     // Unpack the 36-bit Radix-4 word into three 12-bit twiddle factors
     coeff_t r4_w1, r4_w2, r4_w3;
