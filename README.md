@@ -1,4 +1,4 @@
-# Polynomial Arithmetic Unit (PAU) for ML-KEM
+# Polynomial Arithmetic Unit (PAU) for ML-KEM (SystemVerilog)
 
 ![Language](https://img.shields.io/badge/Language-SystemVerilog-blue)
 ![Standard](https://img.shields.io/badge/Standard-FIPS%20203-green)
