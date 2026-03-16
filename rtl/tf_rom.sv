@@ -162,7 +162,7 @@ module tf_rom (
     // Content: Q - zeta^-1 for each twiddle factor.
     // Addressed by j/4 (Alg 6, line 2).
 
-    localparam logic [11:0] OMEGA_INV_ROM [0:63] = '{
+    localparam logic [11:0] OMEGA_INV_ROM [64] = '{
         12'd17,   12'd289,  12'd1584, 12'd296,  12'd1703, 12'd2319, 12'd2804, 12'd1062,
         12'd1409, 12'd650,  12'd1063, 12'd1426, 12'd939,  12'd2647, 12'd1722, 12'd2642,
         12'd1637, 12'd1197, 12'd375,  12'd3046, 12'd1847, 12'd1438, 12'd1143, 12'd2786,
