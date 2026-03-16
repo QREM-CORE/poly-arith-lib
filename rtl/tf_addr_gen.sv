@@ -67,8 +67,7 @@ module tf_addr_gen (
     input   logic [1:0]     pass_idx_i,     // Which pass to run (0..3)
 
     // ---- ROM Address Outputs (directly wired to tf_rom) ----
-    output  logic [4:0]     r4_addr_o,      // Radix-4 ROM address (0..20)
-    output  logic [5:0]     r2_addr_o,      // Radix-2 ROM address (0..63)
+    output  logic [5:0]     tf_addr_o,       // Unified ROM address bus
 
     // ---- Control Outputs (directly wired to tf_rom) ----
     output  logic           is_radix2_o,    // 1 = current pass is Radix-2
@@ -201,23 +200,15 @@ module tf_addr_gen (
     // =========================================================================
     // Address Output Logic
     // =========================================================================
-    // For Radix-4 passes: output r4_cnt_r (the sequential t counter)
-    // For Radix-2 passes: output r2_cnt_r (the j/4 counter)
-    // For CWM:            output block_cnt_r on r2_addr (omega index)
-
     always_comb begin
         if (state_r == S_IDLE) begin
-            r4_addr_o = '0;
-            r2_addr_o = '0;
+            tf_addr_o = '0;
         end else if (is_cwm_r) begin
-            r4_addr_o = '0;
-            r2_addr_o = block_cnt_r;
+            tf_addr_o = block_cnt_r; // CWM uses 0..63
         end else if (pass_is_radix2) begin
-            r4_addr_o = '0;
-            r2_addr_o = r2_cnt_r;
+            tf_addr_o = r2_cnt_r;    // Radix-2 uses 0..63
         end else begin
-            r4_addr_o = r4_cnt_r;
-            r2_addr_o = '0;
+            tf_addr_o = {1'b0, r4_cnt_r}; // Radix-4 uses 0..20 (zero-padded)
         end
     end
 

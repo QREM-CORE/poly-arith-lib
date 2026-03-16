@@ -29,8 +29,7 @@ module tf_rom_addr_gen_tb;
     pe_mode_e       mode;
     logic [1:0]     pass_idx;
 
-    logic [4:0]     r4_addr;
-    logic [5:0]     r2_addr;
+    logic [5:0]     tf_addr;
     logic           is_intt;
     logic           is_radix2;
     logic           ag_valid;
@@ -56,8 +55,7 @@ module tf_rom_addr_gen_tb;
         .start_i        (start),
         .ctrl_i         (mode),
         .pass_idx_i     (pass_idx),
-        .r4_addr_o      (r4_addr),
-        .r2_addr_o      (r2_addr),
+        .tf_addr_o      (tf_addr),
         .is_radix2_o    (is_radix2),
         .valid_o        (ag_valid),
         .pass_o         (pass_num)
@@ -71,8 +69,7 @@ module tf_rom_addr_gen_tb;
         .rst            (rst),
         .is_intt_i      (is_intt),
         .is_radix2_i    (is_radix2),
-        .r4_addr_i      (r4_addr),
-        .r2_addr_i      (r2_addr),
+        .tf_addr_i      (tf_addr),
         .w0_o           (w0),
         .w1_o           (w1),
         .w2_o           (w2),
@@ -140,9 +137,9 @@ module tf_rom_addr_gen_tb;
                 cycle_count++;
 
                 // Check r4 address
-                if (r4_addr !== 5'(expected_r4)) begin
-                    $error("NTT P1 B%0d BF%0d: r4_addr=%0d, expected=%0d",
-                           b, j, r4_addr, expected_r4);
+                if (tf_addr !== 6'(expected_r4)) begin
+                    $error("NTT P1 B%0d BF%0d: tf_addr=%0d, expected=%0d",
+                           b, j, tf_addr, expected_r4);
                     errors++;
                 end
 
@@ -181,9 +178,9 @@ module tf_rom_addr_gen_tb;
                 total_tests++;
                 cycle_count++;
 
-                if (r4_addr !== 5'(expected_r4)) begin
-                    $error("NTT P2 B%0d BF%0d: r4_addr=%0d, expected=%0d",
-                           b, j, r4_addr, expected_r4);
+                if (tf_addr !== 6'(expected_r4)) begin
+                    $error("NTT P2 B%0d BF%0d: tf_addr=%0d, expected=%0d",
+                           b, j, tf_addr, expected_r4);
                     errors++;
                 end
             end
@@ -210,9 +207,9 @@ module tf_rom_addr_gen_tb;
                 total_tests++;
                 cycle_count++;
 
-                if (r4_addr !== 5'(expected_r4)) begin
-                    $error("NTT P3 B%0d BF%0d: r4_addr=%0d, expected=%0d",
-                           b, j, r4_addr, expected_r4);
+                if (tf_addr !== 6'(expected_r4)) begin
+                    $error("NTT P3 B%0d BF%0d: tf_addr=%0d, expected=%0d",
+                           b, j, tf_addr, expected_r4);
                     errors++;
                 end
             end
@@ -246,9 +243,9 @@ module tf_rom_addr_gen_tb;
                 total_tests++;
                 cycle_count++;
 
-                if (r2_addr !== 6'(expected_r2)) begin
-                    $error("NTT P4 B%0d BF%0d: r2_addr=%0d, expected=%0d",
-                           b, j, r2_addr, expected_r2);
+                if (tf_addr !== 6'(expected_r2)) begin
+                    $error("NTT P4 B%0d BF%0d: tf_addr=%0d, expected=%0d",
+                           b, j, tf_addr, expected_r2);
                     errors++;
                 end
 
@@ -307,9 +304,9 @@ module tf_rom_addr_gen_tb;
                 total_tests++;
                 cycle_count++;
 
-                if (r2_addr !== 6'(expected_r2)) begin
-                    $error("INTT P1 B%0d BF%0d: r2_addr=%0d, expected=%0d",
-                           b, j, r2_addr, expected_r2);
+                if (tf_addr !== 6'(expected_r2)) begin
+                    $error("INTT P1 B%0d BF%0d: tf_addr=%0d, expected=%0d",
+                           b, j, tf_addr, expected_r2);
                     errors++;
                 end
 
@@ -347,9 +344,9 @@ module tf_rom_addr_gen_tb;
                 total_tests++;
                 cycle_count++;
 
-                if (r4_addr !== 5'(expected_r4)) begin
-                    $error("INTT P2 B%0d BF%0d: r4_addr=%0d, expected=%0d",
-                           b, j, r4_addr, expected_r4);
+                if (tf_addr !== 6'(expected_r4)) begin
+                    $error("INTT P2 B%0d BF%0d: tf_addr=%0d, expected=%0d",
+                           b, j, tf_addr, expected_r4);
                     errors++;
                 end
 
@@ -381,9 +378,9 @@ module tf_rom_addr_gen_tb;
                 total_tests++;
                 cycle_count++;
 
-                if (r4_addr !== 5'(expected_r4)) begin
-                    $error("INTT P3 B%0d BF%0d: r4_addr=%0d, expected=%0d",
-                           b, j, r4_addr, expected_r4);
+                if (tf_addr !== 6'(expected_r4)) begin
+                    $error("INTT P3 B%0d BF%0d: tf_addr=%0d, expected=%0d",
+                           b, j, tf_addr, expected_r4);
                     errors++;
                 end
             end
@@ -410,9 +407,9 @@ module tf_rom_addr_gen_tb;
                 total_tests++;
                 cycle_count++;
 
-                if (r4_addr !== 5'(expected_r4)) begin
-                    $error("INTT P4 B%0d BF%0d: r4_addr=%0d, expected=%0d",
-                           b, j, r4_addr, expected_r4);
+                if (tf_addr !== 6'(expected_r4)) begin
+                    $error("INTT P4 B%0d BF%0d: tf_addr=%0d, expected=%0d",
+                           b, j, tf_addr, expected_r4);
                     errors++;
                 end
             end
