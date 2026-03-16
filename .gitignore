@@ -4,3 +4,5 @@ transcript
 *.macro
 *.log
 *.txt
+obj_dir/
+sim_out/
