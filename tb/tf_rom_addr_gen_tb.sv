@@ -151,7 +151,7 @@ module tf_rom_addr_gen_tb;
                     $error("NTT P1: pass_num=%0d, expected=0", pass_num);
                     errors++;
                 end
-                
+
                 // 2. Advance the clock for the next iteration
                 @(negedge clk);
             end
