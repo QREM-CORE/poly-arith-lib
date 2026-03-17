@@ -24,3 +24,6 @@ rtl/pe1.sv
 rtl/pe2.sv
 rtl/pe3.sv
 rtl/pe_unit.sv
+
+# --- PAU Controller ---
+rtl/unipam_controller.sv
