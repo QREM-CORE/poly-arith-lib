@@ -21,7 +21,6 @@
  *    Operation type pe_ctrl_o is sent to pe_unit.
  */
 
-`include "poly_arith_pkg.sv"
 import poly_arith_pkg::*;
 
 module unipam_controller (
@@ -62,7 +61,7 @@ module unipam_controller (
     // =========================================================================
 
     // General architecture constants
-    localparam logic [7:0] COEFFS_PER_POLY      = 8'd256;
+    localparam logic [8:0] COEFFS_PER_POLY      = 9'd256;
     localparam logic [7:0] COEFFS_PER_ISSUE     = 8'd4;
 
     // Pass indices
