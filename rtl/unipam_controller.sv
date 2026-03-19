@@ -50,6 +50,7 @@ module unipam_controller (
     output logic [1:0]       cmi_poly_id_o,
     output logic [3:0][7:0]  cmi_coeff_idx_o,
     output logic [3:0]       cmi_coeff_valid_o,
+    output logic [3:0]       cmi_wb_latency_o,
 
     // ---- Optional pass status ----
     output logic [5:0]       block_cnt_o,
@@ -158,10 +159,10 @@ module unipam_controller (
     logic issue_fire;
 
     // =========================================================================
-    // 2-cycle delay for PE valid/control to match CMI read latency
+    // 1-cycle delay for PE valid/control to match wrapper read latency
     // =========================================================================
-    pe_mode_e pe_ctrl_d1_r, pe_ctrl_d2_r;
-    logic     pe_valid_d1_r, pe_valid_d2_r;
+    pe_mode_e pe_ctrl_d1_r;
+    logic     pe_valid_d1_r;
 
     // =========================================================================
     // Index generation helpers
@@ -537,9 +538,7 @@ module unipam_controller (
             issue_addr_r <= ZERO8;
 
             pe_ctrl_d1_r  <= PE_MODE_NTT;
-            pe_ctrl_d2_r  <= PE_MODE_NTT;
             pe_valid_d1_r <= 1'b0;
-            pe_valid_d2_r <= 1'b0;
         end else begin
             state_r      <= state_n;
             pass_idx_r   <= pass_idx_n;
@@ -559,11 +558,9 @@ module unipam_controller (
                 issue_addr_r <= ZERO8;
             end
 
-            // Delay control/valid by 2 cycles to match CMI read latency
+            // Delay control/valid by 1 cycle to match wrapper read latency
             pe_ctrl_d1_r  <= op_r;
-            pe_ctrl_d2_r  <= pe_ctrl_d1_r;
             pe_valid_d1_r <= issue_fire;
-            pe_valid_d2_r <= pe_valid_d1_r;
         end
     end
 
@@ -573,8 +570,8 @@ module unipam_controller (
     assign ready_o            = (state_r == S_IDLE);
     assign done_o             = (state_r == S_DONE);
 
-    assign pe_ctrl_o          = pe_ctrl_d2_r;
-    assign pe_valid_o         = pe_valid_d2_r;
+    assign pe_ctrl_o          = pe_ctrl_d1_r;
+    assign pe_valid_o         = pe_valid_d1_r;
 
     assign tf_start_o         = (state_r == S_SETUP) && pass_uses_tf;
     assign pass_idx_o         = pass_idx_r;
@@ -591,6 +588,12 @@ module unipam_controller (
     // If your AU expects only specific lanes active in radix-2 mode,
     // change this for pass_is_radix2.
     assign cmi_coeff_valid_o  = (state_r == S_RUN) ? 4'b1111 : 4'b0000;
+    assign cmi_wb_latency_o   = ((op_r == PE_MODE_NTT) || (op_r == PE_MODE_INTT)) ?
+                                 (pass_is_radix2 ? 4'd5 : 4'd9) :
+                                 (op_r == PE_MODE_CWM)    ? 4'd9 :
+                                 (op_r == PE_MODE_COMP)   ? 4'd4 :
+                                 (op_r == PE_MODE_DECOMP) ? 4'd4 :
+                                 (op_r == PE_MODE_ADDSUB) ? 4'd2 : 4'd2;
 
     assign block_cnt_o        = block_cnt_r;
     assign bf_cnt_o           = bf_cnt_r;

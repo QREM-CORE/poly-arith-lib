@@ -105,7 +105,8 @@ module unipam_top (
         .cmi_coeff_idx_o    (coeff_idx),
         .cmi_coeff_valid_o  (),
         .block_cnt_o        (),
-        .bf_cnt_o           ()
+        .bf_cnt_o           (),
+        .cmi_wb_latency_o   ()
     );
 
     cmi cmi (
